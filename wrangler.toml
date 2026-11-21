@@ -1,0 +1,59 @@
+name = "flop-miner-board"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Daily: re-queue stale pending_verification, rebuild aggregates, write R2 snapshot, prune.
+[triggers]
+crons = ["17 3 * * *"]
+
+[vars]
+# Origin that SIWD challenges are bound to. Empty = use the request origin
+# (safe on Cloudflare, which routes by host). Set explicitly once a domain exists.
+SITE_ORIGIN = ""
+# "rpc" in production. "mock" is refused unless ALLOW_MOCK_VERIFIER = "true".
+VERIFIER = "rpc"
+ALLOW_MOCK_VERIFIER = "false"
+# Public HTTP JSON-RPC per network. Testnet stays empty until official docs publish it (SPEC §11.4).
+FLOP_RPC_URL_DEVNET = "https://rpc.devnet.flop.network"
+FLOP_RPC_URL_TESTNET = ""
+# Explorer URL templates, {hash} / {address} placeholders. Empty = no links. Do not invent.
+EXPLORER_TX_URL_DEVNET = ""
+EXPLORER_TX_URL_TESTNET = ""
+EXPLORER_ACCOUNT_URL_DEVNET = ""
+EXPLORER_ACCOUNT_URL_TESTNET = ""
+CHALLENGE_TTL_SECONDS = "300"
+SESSION_TTL_SECONDS = "1800"
+RATE_LIMIT_SUBMIT_HOURLY = "30"
+RATE_LIMIT_SUBMIT_DAILY = "200"
+RATE_LIMIT_CHALLENGE_HOURLY = "60"
+VERIFY_INLINE_TIMEOUT_MS = "2500"
+VERIFY_MAX_ATTEMPTS = "12"
+# Secret (wrangler secret put): SESSION_SIGNING_KEY
+
+[[d1_databases]]
+binding = "DB"
+database_name = "flop-board"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "flop-board"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[queues.producers]]
+binding = "VERIFY_QUEUE"
+queue = "flop-board-verify"
+
+[[queues.consumers]]
+queue = "flop-board-verify"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 10
+
+[observability]
+enabled = true

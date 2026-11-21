@@ -1,0 +1,4 @@
+# Copy to .dev.vars for `wrangler dev`. Never commit .dev.vars.
+SESSION_SIGNING_KEY=replace-with-output-of-openssl-rand-base64-48
+VERIFIER=mock
+ALLOW_MOCK_VERIFIER=true

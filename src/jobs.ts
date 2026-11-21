@@ -1,0 +1,69 @@
+import type { Env, VerifyJob } from "./env";
+import { intVar } from "./env";
+import { runVerification } from "./receipts/process";
+import type { ReceiptPayload } from "./receipts/schema";
+import { getVerifier } from "./verify";
+import { recomputeAll } from "./stats/aggregate";
+import { writeSnapshot } from "./stats/feeds";
+import { pruneChallenges } from "./auth/challenge";
+import { pruneRateLimits } from "./lib/ratelimit";
+
+/** Queue consumer: on-chain verification retries with exponential backoff. */
+export async function handleVerifyBatch(batch: MessageBatch<VerifyJob>, env: Env): Promise<void> {
+  const maxAttempts = intVar(env.VERIFY_MAX_ATTEMPTS, 12);
+  for (const msg of batch.messages) {
+    const row = await env.DB.prepare(
+      "SELECT payload_json, excluded_reason, verification, verify_attempts FROM receipts WHERE id = ?",
+    )
+      .bind(msg.body.receiptId)
+      .first<{ payload_json: string; excluded_reason: string | null; verification: string; verify_attempts: number }>();
+    if (!row || row.verification !== "pending_verification") {
+      msg.ack();
+      continue;
+    }
+    if (row.verify_attempts >= maxAttempts) {
+      await giveUp(env, msg.body.receiptId);
+      msg.ack();
+      continue;
+    }
+    try {
+      const payload = JSON.parse(row.payload_json) as ReceiptPayload;
+      const state = await runVerification(env, msg.body.receiptId, payload, row.excluded_reason, "queue");
+      if (state.verification === "pending_verification") {
+        msg.retry({ delaySeconds: Math.min(60 * 2 ** msg.attempts, 6 * 3600) });
+      } else msg.ack();
+    } catch {
+      msg.retry({ delaySeconds: Math.min(60 * 2 ** msg.attempts, 6 * 3600) });
+    }
+  }
+}
+
+async function giveUp(env: Env, id: string) {
+  await env.DB.prepare(
+    "UPDATE receipts SET verification = 'failed', verification_note = 'verification_gave_up', verified_at = ? WHERE id = ? AND verification = 'pending_verification'",
+  )
+    .bind(Date.now(), id)
+    .run();
+}
+
+/** Daily cron: re-queue stale pending rows (Free queue retention is 24 h), rebuild, snapshot, prune. */
+export async function handleCron(env: Env): Promise<void> {
+  const verifier = getVerifier(env);
+  const maxAttempts = intVar(env.VERIFY_MAX_ATTEMPTS, 12);
+  const { results } = await env.DB.prepare(
+    `SELECT id, network, verify_attempts FROM receipts
+      WHERE verification = 'pending_verification' AND received_at < ? ORDER BY received_at LIMIT 1000`,
+  )
+    .bind(Date.now() - 3600_000)
+    .all<{ id: string; network: "testnet" | "devnet"; verify_attempts: number }>();
+  const jobs: { body: VerifyJob }[] = [];
+  for (const r of results) {
+    if (r.verify_attempts >= maxAttempts) await giveUp(env, r.id);
+    else if (verifier.canVerify(r.network)) jobs.push({ body: { receiptId: r.id } });
+  }
+  for (let i = 0; i < jobs.length; i += 100) await env.VERIFY_QUEUE.sendBatch(jobs.slice(i, i + 100));
+  await recomputeAll(env);
+  await writeSnapshot(env);
+  await pruneChallenges(env);
+  await pruneRateLimits(env);
+}
