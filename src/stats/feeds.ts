@@ -63,7 +63,7 @@ export async function buildMeta(env: Env) {
   const live = await hasLiveCounted(env);
   const counts = await env.DB.prepare(
     `SELECT
-       SUM(CASE WHEN counted = 1 AND is_sample = 0 THEN 1 ELSE 0 END) AS counted_live,
+       SUM(CASE WHEN counted = 1 AND is_sample = 0 AND verified_by IS NOT NULL AND verified_by != 'mock' THEN 1 ELSE 0 END) AS counted_live,
        SUM(CASE WHEN is_sample = 1 THEN 1 ELSE 0 END) AS sample_rows,
        SUM(CASE WHEN verification = 'pending_verification' THEN 1 ELSE 0 END) AS pending
      FROM receipts`,

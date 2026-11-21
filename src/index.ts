@@ -28,7 +28,11 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 app.use("*", async (c, next) => {
   await next();
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.res.headers.set(k, v);
+  // Responses from the Cache API (and some fetches) carry immutable headers; copy before mutating.
+  const res = new Response(c.res.body, c.res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+  c.res = undefined;
+  c.res = res;
 });
 
 app.onError((err, c) => {

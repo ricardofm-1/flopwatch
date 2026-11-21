@@ -61,6 +61,7 @@ CREATE TABLE receipts (
   verification_note TEXT,
   verify_attempts   INTEGER NOT NULL DEFAULT 0,
   verified_at       INTEGER,
+  verified_by       TEXT,                    -- verifier name; 'mock' rows never make the board LIVE
   excluded_reason   TEXT,                    -- e.g. self_dealing
   counted           INTEGER NOT NULL DEFAULT 0,
   is_sample         INTEGER NOT NULL DEFAULT 0
@@ -71,7 +72,7 @@ CREATE INDEX idx_receipts_channel ON receipts(channel_id);
 CREATE INDEX idx_receipts_status ON receipts(status);
 CREATE INDEX idx_receipts_verification ON receipts(verification, received_at);
 CREATE INDEX idx_receipts_group ON receipts(network, miner, model, counted);
-CREATE INDEX idx_receipts_live ON receipts(network, counted, is_sample);
+CREATE INDEX idx_receipts_live ON receipts(network, counted, is_sample, verified_by);
 -- Dedup / replay (SPEC §4): one settlement extrinsic counts once per network.
 CREATE UNIQUE INDEX uq_receipts_settlement ON receipts(network, settlement_tx) WHERE settlement_tx IS NOT NULL;
 

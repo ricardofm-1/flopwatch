@@ -1,0 +1,42 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Refuse to deploy with the mock verifier or placeholder IDs
+        run: |
+          grep -q '^ALLOW_MOCK_VERIFIER = "false"' wrangler.toml || { echo "ALLOW_MOCK_VERIFIER must be false"; exit 1; }
+          grep -q '^VERIFIER = "rpc"' wrangler.toml || { echo "VERIFIER must be rpc"; exit 1; }
+          ! grep -q 'REPLACE_WITH_' wrangler.toml || { echo "Fill in D1/KV IDs in wrangler.toml"; exit 1; }
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.166.0"
+          command: d1 migrations apply flop-board --remote
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.166.0"
+          command: deploy

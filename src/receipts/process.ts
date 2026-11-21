@@ -73,11 +73,11 @@ export async function runVerification(
   const counted = passed && excludedReason === null;
   const wasLive = counted && payload.network === "testnet" ? await hasLiveCounted(env) : true;
   await env.DB.prepare(
-    `UPDATE receipts SET verification = ?, verification_note = ?, verified_at = ?, counted = ?,
+    `UPDATE receipts SET verification = ?, verification_note = ?, verified_at = ?, verified_by = ?, counted = ?,
             verify_attempts = verify_attempts + 1
       WHERE id = ? AND verification = 'pending_verification'`,
   )
-    .bind(passed ? "passed" : "failed", res.note ?? null, now, counted ? 1 : 0, id)
+    .bind(passed ? "passed" : "failed", res.note ?? null, now, verifier.name, counted ? 1 : 0, id)
     .run();
 
   if (counted) {

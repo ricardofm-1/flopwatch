@@ -84,9 +84,12 @@ export function computeStats(rows: ReceiptRow[]): MinerStats {
   };
 }
 
+/** A real counted testnet receipt exists (mock-verified rows never qualify). */
 export async function hasLiveCounted(env: Env): Promise<boolean> {
   const r = await env.DB.prepare(
-    "SELECT 1 AS x FROM receipts WHERE network = 'testnet' AND counted = 1 AND is_sample = 0 LIMIT 1",
+    `SELECT 1 AS x FROM receipts
+      WHERE network = 'testnet' AND counted = 1 AND is_sample = 0 AND verified_by IS NOT NULL AND verified_by != 'mock'
+      LIMIT 1`,
   ).first();
   return !!r;
 }

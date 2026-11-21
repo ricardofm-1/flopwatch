@@ -67,12 +67,13 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
       return dir === "asc" ? c : -c;
     });
 
+  const NUMERIC = new Set(["n", "success", "settlement", "p50", "p95", "price", "token"]);
   const link = (key: string, label: string) => {
     const p = new URLSearchParams(q);
     p.set("sort", key);
     p.set("dir", sortKey === key && dir === "desc" ? "asc" : "desc");
     const arrow = sortKey === key ? (dir === "desc" ? " ▾" : " ▴") : "";
-    return html`<th scope="col" aria-sort="${sortKey === key ? (dir === "desc" ? "descending" : "ascending") : "none"}"><a href="?${p.toString()}">${label}${arrow}</a></th>`;
+    return html`<th scope="col"${NUMERIC.has(key) ? raw(' class="num"') : ""} aria-sort="${sortKey === key ? (dir === "desc" ? "descending" : "ascending") : "none"}"><a href="?${p.toString()}">${label}${arrow}</a></th>`;
   };
 
   const body = html`
@@ -153,7 +154,7 @@ export async function minerPage(env: Env, miner: string, q: URLSearchParams): Pr
 </section>
 ${[...byModel.entries()].map(
   ([k, stats]) => html`<section><h2>${k}</h2>
-<div class="table-wrap"><table class="board compact"><thead><tr><th>Window</th><th>n</th><th>Success</th><th>Settlement</th><th>p50</th><th>p95</th><th>FLOP / session</th><th>FLOP / token</th><th>Last seen</th></tr></thead>
+<div class="table-wrap"><table class="board compact"><thead><tr><th>Window</th><th class="num">n</th><th class="num">Success</th><th class="num">Settlement</th><th class="num">p50</th><th class="num">p95</th><th class="num">FLOP / session</th><th class="num">FLOP / token</th><th>Last seen</th></tr></thead>
 <tbody>${WINDOWS.map((w) => {
     const s = stats.find((x) => x.window === w);
     return s
@@ -164,7 +165,7 @@ ${[...byModel.entries()].map(
 <section>
 <h2>Receipts</h2>
 <p class="hint">Newest first. Prompts, outputs, buyer wallets and submitter DIDs are never shown.</p>
-<div class="table-wrap"><table class="board compact receipts"><thead><tr><th>Started</th><th>Model</th><th>Status</th><th>Latency</th><th>Paid FLOP</th><th>Channel / tx</th><th>Verification</th><th>Counted</th></tr></thead>
+<div class="table-wrap"><table class="board compact receipts"><thead><tr><th>Started</th><th>Model</th><th>Status</th><th class="num">Latency</th><th class="num">Paid FLOP</th><th>Channel / tx</th><th>Verification</th><th>Counted</th></tr></thead>
 <tbody>${feed.receipts.map(
     (r) => html`<tr>
 <td data-label="Started">${lisbon(r.startedAt as string)}</td>
