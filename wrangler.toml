@@ -2,6 +2,8 @@ name = "flop-miner-board"
 main = "src/index.ts"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
 
 # Daily: re-queue stale pending_verification, rebuild aggregates, write R2 snapshot, prune.
 [triggers]
@@ -34,7 +36,7 @@ VERIFY_MAX_ATTEMPTS = "12"
 [[d1_databases]]
 binding = "DB"
 database_name = "flop-board"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "f5a70eee-f3fa-4563-8195-a75d5cc9d2a3"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
@@ -43,7 +45,7 @@ bucket_name = "flop-board"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "8773defc6bd84bef9445f41e7a6e8760"
 
 [[queues.producers]]
 binding = "VERIFY_QUEUE"
