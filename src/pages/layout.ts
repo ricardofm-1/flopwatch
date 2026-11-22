@@ -1,4 +1,5 @@
 import { html, raw, type Raw } from "./html";
+import { asset } from "./static";
 
 export interface Banner {
   label: string;
@@ -23,13 +24,13 @@ export function layout(opts: { title: string; banner?: Banner; body: Raw; script
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${opts.title}</title>
 <meta name="description" content="Per-miner reliability for Flop inference, built from DID-signed, chain-verified receipts.">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="${asset("/static/style.css")}">
 <link rel="alternate" type="application/json" href="/feeds/miners.json">
 </head>
 <body>
 <header class="top">
   <a class="brand" href="/">Flop Miner Reliability Board</a>
-  <nav>${nav.map(([href, label]) => html`<a href="${href}"${opts.active === href ? raw(' aria-current="page"') : ""}>${label}</a>`)}</nav>
+  <nav>${nav.map(([href, label]) => html`<a href="${href}"${href === "/connect" ? raw(' id="nav-connect"') : ""}${opts.active === href ? raw(' aria-current="page"') : ""}>${label}</a>`)}</nav>
 </header>
 ${
   b
@@ -45,7 +46,7 @@ ${
   <p>Observed, verified receipts — not an official Flop ranking. Times shown in Europe/Lisbon.
   <a href="/feeds/meta.json">meta.json</a> · <a href="/methodology">methodology</a></p>
 </footer>
-${(opts.scripts ?? []).map((s) => html`<script src="${s}" defer></script>`)}
+${["/static/app.js", ...(opts.scripts ?? [])].map((s) => html`<script src="${asset(s)}" defer></script>`)}
 </body>
 </html>`.value
   );

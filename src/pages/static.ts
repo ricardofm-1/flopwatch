@@ -11,6 +11,7 @@ code,.mono{font-family:var(--mono);font-size:.92em}
 .top nav{display:flex;gap:1rem;flex-wrap:wrap}
 .top nav a{color:var(--muted);text-decoration:none}
 .top nav a[aria-current]{color:var(--fg);font-weight:600}
+.top nav a.is-connected{color:var(--ok);font-weight:600}
 .banner{display:flex;flex-wrap:wrap;gap:.25rem 1.25rem;padding:.55rem 16px;font-size:.9rem;border-bottom:1px solid var(--line)}
 .banner.sample{background:var(--warn-bg);color:var(--warn-fg)}
 .banner.sample strong{color:var(--sample);letter-spacing:.02em}
@@ -51,6 +52,16 @@ table.board{border-collapse:collapse;width:100%;font-size:.9rem}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.6rem;overflow-x:auto;font-size:.82rem}
 .result:empty{display:none}
 [hidden]{display:none!important}
+:root{interpolate-size:allow-keywords}
+.submit-panel{margin:1rem 0 .5rem}
+.submit-panel>summary{display:inline-flex;align-items:center;gap:.5rem;list-style:none;background:var(--fg);color:var(--bg);border-radius:6px;padding:.45rem .9rem;cursor:pointer;user-select:none}
+.submit-panel>summary::-webkit-details-marker{display:none}
+.submit-panel>summary::after{content:"";width:.45em;height:.45em;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .2s ease}
+.submit-panel[open]>summary::after{transform:rotate(45deg) translate(-2px,-2px)}
+.submit-panel>.card{max-width:72ch}
+.submit-panel::details-content{block-size:0;overflow:hidden;transition:block-size .25s ease,content-visibility .25s allow-discrete}
+.submit-panel[open]::details-content{block-size:auto}
+@media (prefers-reduced-motion:reduce){.submit-panel::details-content,.submit-panel>summary::after{transition:none}}
 .connected-as{margin:0;color:var(--ok);font-weight:600;word-break:break-all}
 .connected-as .mono{font-weight:500}
 .card.connected button{margin-top:.6rem}
@@ -75,6 +86,30 @@ document.addEventListener('click', function (e) {
     var t = b.textContent; b.textContent = '✓'; setTimeout(function () { b.textContent = t; }, 900);
   });
 });
+// Shared session state: the nav shows "Connected" (green) while a DID session is active.
+(function () {
+  var state = { known: false, did: null };
+  function applyNav(did) {
+    var a = document.getElementById('nav-connect');
+    if (!a) return;
+    a.textContent = did ? 'Connected' : 'Connect';
+    a.classList.toggle('is-connected', !!did);
+    if (did) a.title = 'Connected as ' + did; else a.removeAttribute('title');
+  }
+  window.flopSetSession = function (did) {
+    state = { known: true, did: did || null };
+    applyNav(state.did);
+    document.dispatchEvent(new CustomEvent('flop:session', { detail: { did: state.did } }));
+  };
+  window.flopOnSession = function (fn) {
+    document.addEventListener('flop:session', function (e) { fn(e.detail.did); });
+    if (state.known) fn(state.did);
+  };
+  fetch('/v1/auth/session', { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { window.flopSetSession(j.did); })
+    .catch(function () { window.flopSetSession(null); });
+})();
 `;
 
 export const CONNECT_JS = `
@@ -90,8 +125,7 @@ export const CONNECT_JS = `
     $('step3-num').hidden = on;
     $('connected-did').textContent = on ? did : '';
     $('session-status').textContent = 'Not connected.';
-    if (!on) { challenge = null; $('challenge').value = ''; $('signature').value = ''; $('submit-result').textContent = ''; }
-    ['envelope', 'envelope-file', 'submit'].forEach(function (id) { $(id).disabled = !on; });
+    if (!on) { challenge = null; $('challenge').value = ''; $('signature').value = ''; }
   }
   function canon(v) {
     if (v === null || typeof v !== 'object') return JSON.stringify(v);
@@ -103,7 +137,7 @@ export const CONNECT_JS = `
     var j = await r.json().catch(function () { return {}; });
     return { status: r.status, body: j };
   }
-  fetch('/v1/auth/session', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) { setConnected(j.did); }).catch(function () {});
+  window.flopOnSession(setConnected);
   $('get-challenge').addEventListener('click', async function () {
     var did = $('did').value.trim();
     var r = await api('/v1/auth/challenge', did ? { did: did } : null);
@@ -114,17 +148,43 @@ export const CONNECT_JS = `
   $('verify').addEventListener('click', async function () {
     if (!challenge) { $('session-status').textContent = 'Request a challenge first.'; return; }
     var r = await api('/v1/auth/verify', { did: $('did').value.trim(), challenge: challenge, signature: $('signature').value.trim() });
-    if (r.status === 200) { setConnected(r.body.did); $('signature').value = ''; }
+    if (r.status === 200) { $('signature').value = ''; window.flopSetSession(r.body.did); }
     else $('session-status').textContent = 'Failed (' + r.status + '): ' + (r.body.message || r.body.error);
+  });
+  $('logout').addEventListener('click', async function () { await api('/v1/auth/logout'); window.flopSetSession(null); });
+})();
+`;
+
+export const SUBMIT_JS = `
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  if (!$('submit')) return;
+  window.flopOnSession(function (did) {
+    var on = !!did;
+    ['envelope', 'envelope-file', 'submit'].forEach(function (id) { $(id).disabled = !on; });
+    var note = $('submit-auth-note'); if (note) note.hidden = on;
+    if (!on) $('submit-result').textContent = '';
   });
   $('envelope-file').addEventListener('change', async function (e) {
     var f = e.target.files && e.target.files[0]; if (f) $('envelope').value = await f.text();
   });
   $('submit').addEventListener('click', async function () {
     var env; try { env = JSON.parse($('envelope').value); } catch (_) { $('submit-result').textContent = 'Envelope is not valid JSON.'; return; }
-    var r = await api('/v1/receipts', env);
-    $('submit-result').textContent = r.status + ' ' + JSON.stringify(r.body, null, 2);
+    var r = await fetch('/v1/receipts', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(env) });
+    var j = await r.json().catch(function () { return {}; });
+    $('submit-result').textContent = r.status + ' ' + JSON.stringify(j, null, 2);
   });
-  $('logout').addEventListener('click', async function () { await api('/v1/auth/logout'); setConnected(null); });
 })();
 `;
+
+/** FNV-1a over all asset bodies: changes whenever any asset changes, so URLs can be cached as immutable. */
+function fnv1a(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+export const ASSET_VERSION = fnv1a(STYLE_CSS + APP_JS + CONNECT_JS + SUBMIT_JS);
+export const asset = (path: string) => `${path}?v=${ASSET_VERSION}`;

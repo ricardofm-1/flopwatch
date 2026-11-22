@@ -12,7 +12,7 @@ import { submitReceipt } from "./receipts/submit";
 import { submitBinding } from "./receipts/bindings";
 import { buildMeta, buildMinerFeed, buildMinersFeed, getPublicReceipt } from "./stats/feeds";
 import { connectPage, homePage, methodologyPage, minerPage, notFoundPage } from "./pages/views";
-import { APP_JS, CONNECT_JS, STYLE_CSS } from "./pages/static";
+import { APP_JS, CONNECT_JS, STYLE_CSS, SUBMIT_JS } from "./pages/static";
 import { handleCron, handleVerifyBatch } from "./jobs";
 import { isSs58 } from "./did/ss58";
 
@@ -191,11 +191,18 @@ app.get("/data/*", async (c) => {
 });
 
 // ---------- Static ----------
-const asset = (body: string, type: string) => () =>
-  new Response(body, { headers: { "content-type": type, "cache-control": "public, max-age=3600" } });
+// URLs carry ?v=<content hash> (see pages/static.ts), so versioned requests are immutable.
+const asset = (body: string, type: string) => (c: AppCtx) =>
+  new Response(body, {
+    headers: {
+      "content-type": type,
+      "cache-control": c.req.query("v") ? "public, max-age=31536000, immutable" : "public, max-age=300",
+    },
+  });
 app.get("/static/style.css", asset(STYLE_CSS, "text/css; charset=utf-8"));
 app.get("/static/app.js", asset(APP_JS, "text/javascript; charset=utf-8"));
 app.get("/static/connect.js", asset(CONNECT_JS, "text/javascript; charset=utf-8"));
+app.get("/static/submit.js", asset(SUBMIT_JS, "text/javascript; charset=utf-8"));
 
 // ---------- Pages ----------
 const page = (body: string, status = 200) =>

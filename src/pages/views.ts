@@ -40,6 +40,19 @@ function addr(env: Env, network: string, a: string): Raw {
   }</span>`;
 }
 
+/** Shared "submit a signed receipt" form (Connect page step 3, and the Board's expandable panel). Wired by /static/submit.js. */
+function submitCard(opts: { id: string; title?: Raw; authNote: boolean }): Raw {
+  return html`<section class="card" id="${opts.id}">
+${opts.title ? html`<h2>${opts.title}</h2>` : ""}
+${opts.authNote ? html`<p id="submit-auth-note" class="hint">You need to <a href="/connect">connect your DID</a> before submitting.</p>` : ""}
+<label for="envelope">Envelope JSON <code>{ "payload": {…}, "signature": "…" }</code></label>
+<textarea id="envelope" rows="10" spellcheck="false" disabled></textarea>
+<label for="envelope-file">…or upload a file</label><input id="envelope-file" type="file" accept="application/json,.json" disabled>
+<button type="button" id="submit" disabled>Submit receipt</button>
+<pre id="submit-result" class="result" role="status"></pre>
+</section>`;
+}
+
 export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
   const meta = await buildMeta(env);
   const network = q.get("network") === "devnet" ? "devnet" : "testnet";
@@ -82,6 +95,10 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
   <p>Per-miner results from wallet-funded inference purchases. Each counted row comes from a DID-signed receipt that was checked on chain.
   ${network === "devnet" ? html`<strong>Devnet data does not count toward anything.</strong>` : ""}</p>
 </section>
+<details class="submit-panel" id="submit-panel">
+  <summary>Submit a signed receipt</summary>
+  ${submitCard({ id: "board-submit", authNote: true })}
+</details>
 <form class="filters" method="get" action="/">
   <label>Network <select name="network">
     <option value="testnet"${network === "testnet" ? raw(" selected") : ""}>testnet</option>
@@ -128,7 +145,7 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
     title: "Flop Miner Reliability Board",
     banner: { label: meta.dataLabel, live: meta.live, network, statsBuiltAt: meta.statsBuiltAt },
     body,
-    scripts: ["/static/app.js"],
+    scripts: ["/static/submit.js"],
     active: "/",
   });
 }
@@ -189,7 +206,6 @@ ${[...byModel.entries()].map(
     title: `Miner ${short(miner)} — Flop Miner Board`,
     banner: { label: meta.dataLabel, live: meta.live, network: network ?? "all", statsBuiltAt: meta.statsBuiltAt },
     body,
-    scripts: ["/static/app.js"],
   });
 }
 
@@ -271,16 +287,9 @@ export function connectPage(): string {
 <p id="session-status" class="status" role="status">Not connected.</p>
 </section>
 
-<section class="card" id="step3">
-<h2><span id="step3-num">3. </span>Submit a signed receipt</h2>
-<label for="envelope">Envelope JSON <code>{ "payload": {…}, "signature": "…" }</code></label>
-<textarea id="envelope" rows="10" spellcheck="false" disabled></textarea>
-<label for="envelope-file">…or upload a file</label><input id="envelope-file" type="file" accept="application/json,.json" disabled>
-<button type="button" id="submit" disabled>Submit receipt</button>
-<pre id="submit-result" class="result" role="status"></pre>
-</section>
+${submitCard({ id: "step3", title: html`<span id="step3-num">3. </span>Submit a signed receipt`, authNote: false })}
 </article>`;
-  return layout({ title: "Connect — Flop Miner Board", body, scripts: ["/static/app.js", "/static/connect.js"], active: "/connect" });
+  return layout({ title: "Connect — Flop Miner Board", body, scripts: ["/static/connect.js", "/static/submit.js"], active: "/connect" });
 }
 
 export function notFoundPage(): string {
