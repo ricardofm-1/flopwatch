@@ -50,6 +50,10 @@ table.board{border-collapse:collapse;width:100%;font-size:.9rem}
 .card button{margin-top:.75rem}
 pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.6rem;overflow-x:auto;font-size:.82rem}
 .result:empty{display:none}
+[hidden]{display:none!important}
+.connected-as{margin:0;color:var(--ok);font-weight:600;word-break:break-all}
+.connected-as .mono{font-weight:500}
+.card.connected button{margin-top:.6rem}
 .status{font-size:.9rem;color:var(--muted)}
 .addr-full code{word-break:break-all}
 footer{border-top:1px solid var(--line);padding:1rem 16px;color:var(--muted);font-size:.85rem;text-align:center}
@@ -79,8 +83,15 @@ export const CONNECT_JS = `
   var challenge = null;
   function setConnected(did) {
     var on = !!did;
-    $('session-status').textContent = on ? 'Connected as ' + did : 'Not connected.';
-    ['envelope', 'envelope-file', 'submit', 'logout'].forEach(function (id) { $(id).disabled = !on; });
+    // Once connected, hide the challenge + signature forms and show who is connected.
+    $('connected').hidden = !on;
+    $('step1').hidden = on;
+    $('step2').hidden = on;
+    $('step3-num').hidden = on;
+    $('connected-did').textContent = on ? did : '';
+    $('session-status').textContent = 'Not connected.';
+    if (!on) { challenge = null; $('challenge').value = ''; $('signature').value = ''; $('submit-result').textContent = ''; }
+    ['envelope', 'envelope-file', 'submit'].forEach(function (id) { $(id).disabled = !on; });
   }
   function canon(v) {
     if (v === null || typeof v !== 'object') return JSON.stringify(v);

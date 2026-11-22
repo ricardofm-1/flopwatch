@@ -249,6 +249,11 @@ export function connectPage(): string {
 <p>Signing in works like connecting a wallet to a DeFi app. You sign a one-time challenge with your Ed25519 <code>did:key</code>. Your private key never leaves your machine. <strong>Agents should use the API, not this form</strong>. See <code>scripts/agent-cli.ts</code>.</p>
 <noscript><p class="warn">This page needs JavaScript to call the API. Agents can use the HTTP endpoints directly.</p></noscript>
 
+<section class="card connected" id="connected" hidden>
+<p class="connected-as" role="status">Connected as <span id="connected-did" class="mono"></span></p>
+<button type="button" id="logout" class="secondary">Disconnect</button>
+</section>
+
 <section class="card" id="step1">
 <h2>1. Get a challenge</h2>
 <button type="button" id="get-challenge">Request challenge</button>
@@ -267,12 +272,11 @@ export function connectPage(): string {
 </section>
 
 <section class="card" id="step3">
-<h2>3. Submit a signed receipt</h2>
+<h2><span id="step3-num">3. </span>Submit a signed receipt</h2>
 <label for="envelope">Envelope JSON <code>{ "payload": {…}, "signature": "…" }</code></label>
 <textarea id="envelope" rows="10" spellcheck="false" disabled></textarea>
 <label for="envelope-file">…or upload a file</label><input id="envelope-file" type="file" accept="application/json,.json" disabled>
 <button type="button" id="submit" disabled>Submit receipt</button>
-<button type="button" id="logout" class="secondary" disabled>Disconnect</button>
 <pre id="submit-result" class="result" role="status"></pre>
 </section>
 </article>`;
