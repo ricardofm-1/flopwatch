@@ -5,7 +5,7 @@ export const SITE_NAME = "Flopwatch";
 export const LINKS = {
   flopIntro: "https://flop.finance/intro/",
   technocore: "https://technocore.chat/",
-  source: "https://github.com/ricardofm-1/flop-miner-board",
+  source: "https://github.com/ricardofm-1/flopwatch",
 };
 
 export interface Banner {
