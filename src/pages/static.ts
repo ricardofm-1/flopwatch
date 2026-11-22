@@ -122,7 +122,6 @@ export const CONNECT_JS = `
     $('connected').hidden = !on;
     $('step1').hidden = on;
     $('step2').hidden = on;
-    $('step3-num').hidden = on;
     $('connected-did').textContent = on ? did : '';
     $('session-status').textContent = 'Not connected.';
     if (!on) { challenge = null; $('challenge').value = ''; $('signature').value = ''; }

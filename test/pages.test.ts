@@ -13,15 +13,17 @@ describe("pages", () => {
     expect(r.text).toMatch(/\/static\/style\.css\?v=\w+/);
   });
 
-  it("every page loads app.js (nav session state); connect keeps step 3", async () => {
+  it("every page loads app.js (nav session state); connect page has no submit form", async () => {
     for (const path of ["/methodology", "/connect"]) {
       const r = await call(path);
       expect(r.text).toContain("/static/app.js");
       expect(r.text).toContain('id="nav-connect"');
     }
     const c = await call("/connect");
-    expect(c.text).toContain('id="step3"');
-    expect(c.text).not.toContain('id="submit-auth-note"');
+    expect(c.text).not.toContain('id="step3"');
+    expect(c.text).not.toContain('id="envelope"');
+    expect(c.text).not.toContain("Submit a signed receipt");
+    expect(c.text).not.toContain("/static/submit.js");
   });
 
   it("serves the shared scripts", async () => {

@@ -40,7 +40,7 @@ function addr(env: Env, network: string, a: string): Raw {
   }</span>`;
 }
 
-/** Shared "submit a signed receipt" form (Connect page step 3, and the Board's expandable panel). Wired by /static/submit.js. */
+/** "Submit a signed receipt" form, shown in the Board's expandable panel. Wired by /static/submit.js. */
 function submitCard(opts: { id: string; title?: Raw; authNote: boolean }): Raw {
   return html`<section class="card" id="${opts.id}">
 ${opts.title ? html`<h2>${opts.title}</h2>` : ""}
@@ -287,9 +287,8 @@ export function connectPage(): string {
 <p id="session-status" class="status" role="status">Not connected.</p>
 </section>
 
-${submitCard({ id: "step3", title: html`<span id="step3-num">3. </span>Submit a signed receipt`, authNote: false })}
 </article>`;
-  return layout({ title: "Connect — Flop Miner Board", body, scripts: ["/static/connect.js", "/static/submit.js"], active: "/connect" });
+  return layout({ title: "Connect — Flop Miner Board", body, scripts: ["/static/connect.js"], active: "/connect" });
 }
 
 export function notFoundPage(): string {
