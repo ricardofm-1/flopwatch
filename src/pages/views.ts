@@ -91,8 +91,9 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
 
   const body = html`
 <section class="intro">
-  <h1>Miner reliability</h1>
-  <p>Per-miner results from wallet-funded inference purchases. Each counted row comes from a DID-signed receipt that was checked on chain.
+  <p class="eyebrow">Proof-of-inference · miner reliability · ${network}</p>
+  <h1>Signed. Settled. Watched.</h1>
+  <p class="lead">Flopwatch tracks how reliably FLOP miners serve inference. Every counted row is a wallet-funded session with a DID-signed receipt that was checked on chain.
   ${network === "devnet" ? html`<strong>Devnet data does not count toward anything.</strong>` : ""}</p>
 </section>
 <details class="submit-panel" id="submit-panel">
@@ -142,7 +143,7 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
 <p class="hint">Success = settled with a returned inference ÷ decided attempts. Prices are medians of actual paid FLOP — never the max cap. <a href="/methodology">How rows count</a>.</p>`;
 
   return layout({
-    title: "Flop Miner Reliability Board",
+    title: "Flopwatch — FLOP miner reliability",
     banner: { label: meta.dataLabel, live: meta.live, network, statsBuiltAt: meta.statsBuiltAt },
     body,
     scripts: ["/static/submit.js"],
@@ -164,6 +165,7 @@ export async function minerPage(env: Env, miner: string, q: URLSearchParams): Pr
   const body = html`
 <section class="intro">
   <p><a href="/">← Board</a></p>
+  <p class="eyebrow">Miner</p>
   <h1 class="mono">${short(miner)}</h1>
   <p class="addr-full"><code>${miner}</code> <button type="button" class="copy" data-copy="${miner}">Copy</button>
   ${explorer ? html`<a href="${explorer}" rel="noopener" target="_blank">Explorer ↗</a>` : ""}
@@ -203,7 +205,7 @@ ${[...byModel.entries()].map(
   )}</tbody></table></div>
 </section>`;
   return layout({
-    title: `Miner ${short(miner)} — Flop Miner Board`,
+    title: `Miner ${short(miner)} — Flopwatch`,
     banner: { label: meta.dataLabel, live: meta.live, network: network ?? "all", statsBuiltAt: meta.statsBuiltAt },
     body,
   });
@@ -212,13 +214,14 @@ ${[...byModel.entries()].map(
 export function methodologyPage(): string {
   const body = html`
 <article class="prose">
+<p class="eyebrow">How Flopwatch counts</p>
 <h1>Methodology</h1>
-<p><strong>This is not an official Flop ranking.</strong> It lists observed, verified receipts that agents submitted after buying inference directly from miners with their own wallets.</p>
+<p><strong>Flopwatch is independent. It is not an official FLOP Network ranking.</strong> It lists observed, verified receipts that agents submitted after buying inference directly from miners with their own wallets.</p>
 
 <h2>What counts</h2>
 <p>A receipt is <em>stored</em> when the submitter is signed in with a DID, <code>payload.did</code> matches that session, and the receipt carries a valid Ed25519 signature over its RFC 8785 (JCS) canonical bytes. It is <em>counted</em> only when all of these also hold:</p>
 <ul>
-<li><strong>On-chain check passed.</strong> The settlement extrinsic or channel it references exists on the public Flop RPC and agrees with the receipt. Until then it is <code>pending_verification</code> and hidden from rankings. If the RPC is down, nothing counts; verification is retried from a queue and a daily job.</li>
+<li><strong>On-chain check passed.</strong> The settlement extrinsic or channel it references exists on the public FLOP Network RPC and agrees with the receipt. Until then it is <code>pending_verification</code> and hidden from rankings. If the RPC is down, nothing counts; verification is retried from a queue and a daily job.</li>
 <li><strong>No self-dealing.</strong> Receipts where buyer = miner never count. Nor do receipts where the submitter's DID is bound to the miner wallet, or where buyer and miner are bound to the same DID. Excluded receipts stay visible on the miner page with the reason.</li>
 <li><strong>Not a duplicate.</strong> Each receipt nonce, and each settlement extrinsic per network, counts once.</li>
 </ul>
@@ -255,13 +258,14 @@ export function methodologyPage(): string {
 <li><a href="/feeds/meta.json">/feeds/meta.json</a> — data label, counts, build time</li>
 <li><code>/data/*</code> — daily snapshots from R2</li></ul>
 </article>`;
-  return layout({ title: "Methodology — Flop Miner Board", body, active: "/methodology" });
+  return layout({ title: "Methodology — Flopwatch", body, active: "/methodology" });
 }
 
 export function connectPage(): string {
   const body = html`
 <article class="prose">
-<h1>Connect with a DID</h1>
+<p class="eyebrow">Sign-in with DID</p>
+<h1>Connect</h1>
 <p>Signing in works like connecting a wallet to a DeFi app. You sign a one-time challenge with your Ed25519 <code>did:key</code>. Your private key never leaves your machine. <strong>Agents should use the API, not this form</strong>. See <code>scripts/agent-cli.ts</code>.</p>
 <noscript><p class="warn">This page needs JavaScript to call the API. Agents can use the HTTP endpoints directly.</p></noscript>
 
@@ -288,11 +292,11 @@ export function connectPage(): string {
 </section>
 
 </article>`;
-  return layout({ title: "Connect — Flop Miner Board", body, scripts: ["/static/connect.js"], active: "/connect" });
+  return layout({ title: "Connect — Flopwatch", body, scripts: ["/static/connect.js"], active: "/connect" });
 }
 
 export function notFoundPage(): string {
-  return layout({ title: "Not found — Flop Miner Board", body: html`<h1>Not found</h1><p><a href="/">Back to the board</a></p>` });
+  return layout({ title: "Not found — Flopwatch", body: html`<p class="eyebrow">404</p><h1>Nothing to watch here.</h1><p class="lead"><a href="/">Back to the board</a></p>` });
 }
 
 export { esc };

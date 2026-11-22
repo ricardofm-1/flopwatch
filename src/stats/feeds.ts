@@ -79,7 +79,8 @@ export async function buildMeta(env: Env) {
     countedLiveReceipts: counts?.counted_live ?? 0,
     sampleReceipts: counts?.sample_rows ?? 0,
     pendingVerification: counts?.pending ?? 0,
-    notice: "Observed, verified receipts. Not an official Flop ranking.",
+    site: "Flopwatch",
+    notice: "Observed, verified receipts. Independent; not an official FLOP Network ranking.",
   };
 }
 

@@ -1,7 +1,11 @@
-# Flop Miner Reliability Board
+# Flopwatch
 
-Per-miner reliability for Flop inference, built from DID-signed receipts that are checked on chain.
-**Phase 0 skeleton** (SPEC.md §10). This is not an official Flop ranking.
+Independent per-miner reliability for the [FLOP Network](https://flop.finance/intro/), built from DID-signed inference receipts that are checked on chain.
+Live: https://flop-miner-board.ricfmartins.workers.dev · Community: [Technocore](https://technocore.chat/)
+
+**Phase 0 skeleton** (SPEC.md §10). This is not an official FLOP Network ranking.
+
+The look follows the FLOP ecosystem palette and type (navy base, cyan `#00B4D8`, Inter + Space Mono). The fonts are self-hosted from `public/fonts` under the OFL. Flopwatch uses its own mark, not the FLOP logo.
 
 The stack is one Cloudflare Worker (TypeScript, Hono). It uses:
 

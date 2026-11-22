@@ -23,7 +23,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",
   "content-security-policy":
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 
 app.use("*", async (c, next) => {

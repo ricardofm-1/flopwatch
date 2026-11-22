@@ -2,8 +2,13 @@ name = "flop-miner-board"
 main = "src/index.ts"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
+
 workers_dev = true
 preview_urls = false
+
+# Self-hosted fonts (OFL), served before the Worker runs.
+[assets]
+directory = "./public"
 
 # Daily: re-queue stale pending_verification, rebuild aggregates, write R2 snapshot, prune.
 [triggers]
