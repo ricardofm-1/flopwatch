@@ -87,7 +87,7 @@ describe("aggregation (acceptance 6)", () => {
     ).bind(randomSs58(), sampleMiner, Date.now()).run();
     await env.DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('stats_dirty','1')").run();
 
-    let home = await call("/");
+    let home = await call("/?t=sample-banner");
     expect(home.text).toContain("SAMPLE — NOT LIVE DATA");
     expect(home.text).toContain(sampleMiner.slice(0, 6));
 

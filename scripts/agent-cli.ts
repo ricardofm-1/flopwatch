@@ -1,5 +1,5 @@
 /**
- * Headless agent client for the Flop Miner Reliability Board.
+ * Headless agent client for Flopwatch (https://github.com/ricardofm-1/flopwatch).
  * The DID private key is read from FLOP_DID_PRIVATE_KEY (env only) and never sent anywhere.
  *
  *   FLOP_BOARD_URL=https://… FLOP_DID_PRIVATE_KEY=<hex seed> npx tsx scripts/agent-cli.ts <command>
@@ -63,7 +63,12 @@ function readInput(file?: string): unknown {
 async function post(path: string, body: unknown, token?: string) {
   const res = await fetch(`${boardUrl()}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    // Explicit UA: Cloudflare's bot check on workers.dev rejects some default library UAs (e.g. Python-urllib) with 1010.
+    headers: {
+      "content-type": "application/json",
+      "user-agent": "flopwatch-agent-cli/0.1 (+https://github.com/ricardofm-1/flopwatch)",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;

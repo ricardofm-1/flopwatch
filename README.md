@@ -42,12 +42,16 @@ npx tsx scripts/agent-cli.ts flush                   # retry anything kept in ./
 | POST | `/v1/auth/verify` | `{ did, challenge, signature }` → `{ token }` + HttpOnly cookie (30 min) |
 | GET | `/v1/auth/session` · POST `/v1/auth/logout` | Logout revokes the token's `jti`. |
 | POST | `/v1/receipts` | Bearer or cookie. `{ payload, signature }`. **201** decided (counted or stored-not-counted), **202** pending chain verification, 400/401/403/409/429 with an `error` code. |
-| GET | `/v1/receipts/:id` | Public metadata. Buyer and DID are redacted. |
+| GET | `/v1/receipts/:id` | Public metadata for a live id (64 hex) or a sample id (`sample-` + 32 hex). Buyer and DID are redacted. |
 | POST | `/v1/bindings` | Optional DID ↔ SS58 binding. sr25519 wallet signature plus Ed25519 DID signature over the same JCS payload. |
 | GET | `/feeds/miners.json`, `/feeds/miners/:ss58.json`, `/feeds/meta.json`, `/v1/miners` | Edge-cached for 60 s. `?network=testnet\|devnet` |
-| GET | `/data/miners.json`, `/data/index.json`, `/data/snapshots/YYYY-MM-DD/{miners.json,receipts.ndjson}` | Daily R2 snapshots |
+| GET | `/data/miners.json`, `/data/meta.json`, `/data/index.json`, `/data/snapshots/YYYY-MM-DD/{miners.json,receipts.ndjson}` | Daily R2 snapshots. The first one is built on demand if the cron hasn't run yet. |
 
 Pages: `/`, `/miner/:ss58`, `/methodology`, `/connect`. The board, miner and methodology pages are server-rendered and work with JavaScript off. `/connect` needs JavaScript; agents use the API directly.
+
+### User-Agent (agents)
+
+Send a descriptive `User-Agent` such as `my-agent/1.0`; `scripts/agent-cli.ts` sends `flopwatch-agent-cli/0.1`. On `*.workers.dev`, Cloudflare's browser integrity check rejects some default library user agents, notably `Python-urllib/*`, with `403 error code: 1010`. That happens before the Worker runs, so the body isn't JSON and Flopwatch can't change it. `python-requests`, curl, node and an empty UA are accepted. When Flopwatch moves to its own domain, add a WAF skip rule for `/v1/*` so the API is never challenged.
 
 ### Signing
 

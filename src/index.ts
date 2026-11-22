@@ -10,7 +10,7 @@ import { isDidKey } from "./did/didkey";
 import { jcs } from "./receipts/jcs";
 import { submitReceipt } from "./receipts/submit";
 import { submitBinding } from "./receipts/bindings";
-import { buildMeta, buildMinerFeed, buildMinersFeed, getPublicReceipt } from "./stats/feeds";
+import { buildMeta, buildMinerFeed, buildMinersFeed, getPublicReceipt, writeSnapshot } from "./stats/feeds";
 import { connectPage, homePage, methodologyPage, minerPage, notFoundPage } from "./pages/views";
 import { APP_JS, CONNECT_JS, STYLE_CSS, SUBMIT_JS } from "./pages/static";
 import { handleCron, handleVerifyBatch } from "./jobs";
@@ -22,9 +22,21 @@ const SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
   "x-frame-options": "DENY",
+  "strict-transport-security": "max-age=31536000",
   "content-security-policy":
     "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
+
+// 301 "/methodology/" → "/methodology" (pages only; API and feeds keep strict paths).
+app.use("*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if ((c.req.method === "GET" || c.req.method === "HEAD") && url.pathname.length > 1 && url.pathname.endsWith("/") &&
+      !url.pathname.startsWith("/v1/") && !url.pathname.startsWith("/feeds/") && !url.pathname.startsWith("/data/")) {
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return c.redirect(url.pathname + url.search, 301);
+  }
+  await next();
+});
 
 app.use("*", async (c, next) => {
   await next();
@@ -103,7 +115,8 @@ app.post("/v1/auth/logout", async (c) => {
   const site = siteOrigin(c.env, c.req.raw);
   const s = await readSession(c.env, c, site.uri);
   if (s) await revokeSession(c.env, s.did, s.jti, s.exp);
-  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
+  // Clear with the same attributes the login cookie was set with.
+  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true, httpOnly: true, sameSite: "Lax" });
   return c.json({ ok: true });
 });
 
@@ -130,7 +143,8 @@ app.post("/v1/receipts", requireSession, async (c) => {
 
 app.get("/v1/receipts/:id", async (c) => {
   const id = c.req.param("id");
-  if (!/^[0-9a-f]{64}$/.test(id)) throw new HttpError(404, "not_found");
+  // Live receipts: sha256 hex of JCS(payload). Seeded sample rows: "sample-" + 32 hex.
+  if (!/^([0-9a-f]{64}|sample-[0-9a-f]{32})$/.test(id)) throw new HttpError(404, "not_found");
   const r = await getPublicReceipt(c.env, id);
   if (!r) throw new HttpError(404, "not_found");
   return c.json(r);
@@ -174,12 +188,18 @@ app.get("/feeds/miners/:file", (c) => {
 
 // Daily public snapshots written to R2 by the cron (redacted like the feeds).
 app.get("/data/*", async (c) => {
-  // /data/miners.json, /data/index.json → R2 data/…; /data/snapshots/YYYY-MM-DD/<file> → R2 snapshots/…
+  // /data/{miners,index,meta}.json → R2 data/…; /data/snapshots/YYYY-MM-DD/<file> → R2 snapshots/…
   const path = new URL(c.req.url).pathname.slice("/data/".length);
   let objKey: string | null = null;
-  if (/^[a-z0-9_-]+\.json$/.test(path)) objKey = `data/${path}`;
-  else if (/^snapshots\/\d{4}-\d{2}-\d{2}\/[a-z]+\.(json|ndjson)$/.test(path)) objKey = path;
-  const obj = objKey ? await c.env.BUCKET.get(objKey) : null;
+  if (/^(miners|index|meta)\.json$/.test(path)) objKey = `data/${path}`;
+  else if (/^snapshots\/\d{4}-\d{2}-\d{2}\/(miners\.json|receipts\.ndjson)$/.test(path)) objKey = path;
+  if (!objKey) return c.json({ error: "not_found" }, 404);
+  let obj = await c.env.BUCKET.get(objKey);
+  if (!obj && objKey.startsWith("data/")) {
+    // The daily cron writes snapshots; build the first one on demand so the paths never 404 after a fresh deploy.
+    await writeSnapshot(c.env);
+    obj = await c.env.BUCKET.get(objKey);
+  }
   if (!obj) return c.json({ error: "not_found" }, 404);
   return new Response(obj.body, {
     headers: {
@@ -207,13 +227,26 @@ app.get("/static/submit.js", asset(SUBMIT_JS, "text/javascript; charset=utf-8"))
 // ---------- Pages ----------
 const page = (body: string, status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" } });
-app.get("/", async (c) => page(await homePage(c.env, new URL(c.req.url).searchParams)));
+/** Pages carry no per-user state (session UI is client-side), so the HTML can be edge-cached briefly. */
+async function cachedPage(c: AppCtx, build: () => Promise<string | null>) {
+  const cache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
+  const key = new Request(new URL(c.req.url).toString(), { method: "GET" });
+  const hit = await cache?.match(key);
+  if (hit) return hit;
+  const body = await build();
+  if (body === null) return page(notFoundPage(), 404);
+  const res = page(body);
+  res.headers.set("cache-control", "public, max-age=30, s-maxage=30");
+  if (cache) c.executionCtx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
+app.get("/", (c) => cachedPage(c, () => homePage(c.env, new URL(c.req.url).searchParams)));
 app.get("/miner/:id", async (c) => {
   const id = c.req.param("id");
   if (!isSs58(id)) return page(notFoundPage(), 404);
-  const body = await minerPage(c.env, id, new URL(c.req.url).searchParams);
-  return body ? page(body) : page(notFoundPage(), 404);
+  return cachedPage(c, () => minerPage(c.env, id, new URL(c.req.url).searchParams));
 });
+app.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
 app.get("/methodology", () => page(methodologyPage()));
 app.get("/connect", (c) => {
   c.header("cache-control", "no-store");

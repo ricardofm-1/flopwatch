@@ -1,6 +1,6 @@
 import type { Env, Network } from "../env";
 import { explorerLink, networkConfig, NETWORKS } from "../env";
-import { ensureStatsFresh, getMeta, hasLiveCounted, WINDOWS, type StatsWindow } from "./aggregate";
+import { ensureStatsFresh, getMeta, hasLiveCounted, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
 
 export const SCHEMA_VERSION = 1;
 
@@ -47,12 +47,13 @@ function toFeedRow(env: Env, r: StatsRow): MinerFeedRow {
     sample: r.is_sample === 1,
     n: r.n,
     lowSample: r.n < 5,
-    successRate: r.success_rate,
-    settlementRate: r.settlement_rate,
-    latencyMsP50: r.latency_p50,
-    latencyMsP95: r.latency_p95,
-    flopPerSessionMedian: r.price_session_median,
-    flopPerTokenMedian: r.price_token_median,
+    // Rounded again here so rows computed before rounding existed are clean too.
+    successRate: roundRate(r.success_rate),
+    settlementRate: roundRate(r.settlement_rate),
+    latencyMsP50: roundMs(r.latency_p50),
+    latencyMsP95: roundMs(r.latency_p95),
+    flopPerSessionMedian: roundFlop(r.price_session_median),
+    flopPerTokenMedian: roundFlop(r.price_token_median),
     lastSeen: r.last_seen,
     explorer: explorerLink(networkConfig(env, r.network as Network).accountUrl, "address", r.miner),
   };
@@ -136,20 +137,26 @@ const RECEIPT_COLS = `id, network, miner, model, model_hash, status, ok, latency
   completion_tokens, error_class, started_at, finished_at, channel_id, settlement_tx, block_number, verification,
   verification_note, counted, excluded_reason, is_sample`;
 
-export async function buildMinerFeed(env: Env, miner: string, opts: { network?: string; limit?: number } = {}) {
-  const meta = await buildMeta(env);
-  const stats = await env.DB.prepare(
+export async function buildMinerFeed(
+  env: Env,
+  miner: string,
+  opts: { network?: string; limit?: number; meta?: Awaited<ReturnType<typeof buildMeta>> } = {},
+) {
+  const meta = opts.meta ?? (await buildMeta(env));
+  const [stats, receipts] = await Promise.all([
+    env.DB.prepare(
     `SELECT * FROM miner_stats WHERE miner = ?1 AND (?2 IS NULL OR network = ?2) AND (?3 = 0 OR is_sample = 0)
       ORDER BY network, model, window`,
   )
     .bind(miner, opts.network ?? null, meta.live ? 1 : 0)
-    .all<StatsRow>();
-  const receipts = await env.DB.prepare(
+    .all<StatsRow>(),
+    env.DB.prepare(
     `SELECT ${RECEIPT_COLS} FROM receipts WHERE miner = ?1 AND (?2 IS NULL OR network = ?2) AND (?3 = 0 OR is_sample = 0)
       ORDER BY started_at DESC LIMIT ?4`,
   )
     .bind(miner, opts.network ?? null, meta.live ? 1 : 0, Math.min(opts.limit ?? 200, 500))
-    .all<Record<string, unknown>>();
+    .all<Record<string, unknown>>(),
+  ]);
   if (stats.results.length === 0 && receipts.results.length === 0) return null;
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -184,6 +191,7 @@ export async function writeSnapshot(env: Env, now = new Date()): Promise<string>
     env.BUCKET.put(`snapshots/${day}/receipts.ndjson`, ndjson, { httpMetadata: { contentType: "application/x-ndjson" } }),
     env.BUCKET.put(`data/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`data/index.json`, JSON.stringify({ ...meta, latestSnapshot: `snapshots/${day}/`, generatedAt: now.toISOString() }), json),
+    env.BUCKET.put(`data/meta.json`, JSON.stringify({ ...meta, generatedAt: now.toISOString() }), json),
   ]);
   return day;
 }

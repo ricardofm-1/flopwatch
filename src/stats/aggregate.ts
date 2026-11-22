@@ -43,6 +43,11 @@ export function median(values: number[]): number | null {
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 }
 
+/** Rates to 4 dp; latencies to 0.1 ms; FLOP amounts to 6 significant digits (no float noise like 0.0042675000000000005). */
+export const roundRate = (x: number | null) => (x === null ? null : Math.round(x * 1e4) / 1e4);
+export const roundMs = (x: number | null) => (x === null ? null : Math.round(x * 10) / 10);
+export const roundFlop = (x: number | null) => (x === null ? null : Number(x.toPrecision(6)));
+
 /** SPEC §7 aggregation over already-counted (verified, not excluded) receipts. */
 export function computeStats(rows: ReceiptRow[]): MinerStats {
   const decided = rows.filter((r) => r.status !== "pending");
@@ -74,12 +79,12 @@ export function computeStats(rows: ReceiptRow[]): MinerStats {
   }
   return {
     n: rows.length,
-    successRate: decided.length ? successes / decided.length : null,
-    settlementRate: settleDenom ? settled / settleDenom : null,
-    latencyP50: percentile(latencies, 50),
-    latencyP95: percentile(latencies, 95),
-    priceSessionMedian: median(prices),
-    priceTokenMedian: median(perToken),
+    successRate: roundRate(decided.length ? successes / decided.length : null),
+    settlementRate: roundRate(settleDenom ? settled / settleDenom : null),
+    latencyP50: roundMs(percentile(latencies, 50)),
+    latencyP95: roundMs(percentile(latencies, 95)),
+    priceSessionMedian: roundFlop(median(prices)),
+    priceTokenMedian: roundFlop(median(perToken)),
     lastSeen,
   };
 }

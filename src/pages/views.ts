@@ -152,10 +152,12 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
 }
 
 export async function minerPage(env: Env, miner: string, q: URLSearchParams): Promise<string | null> {
-  const network = q.get("network") === "devnet" ? "devnet" : q.get("network") === "testnet" ? "testnet" : undefined;
-  const feed = await buildMinerFeed(env, miner, { network });
-  if (!feed) return null;
+  // Same default as the Board: testnet ("all" is a window, not a network).
+  const network = q.get("network") === "devnet" ? "devnet" : "testnet";
   const meta = await buildMeta(env);
+  const feed = await buildMinerFeed(env, miner, { network, meta, limit: 50 });
+  if (!feed) return null;
+  const otherNet = network === "testnet" ? "devnet" : "testnet";
   const byModel = new Map<string, typeof feed.stats>();
   for (const s of feed.stats) {
     const k = `${s.network} · ${s.model}`;
@@ -169,7 +171,8 @@ export async function minerPage(env: Env, miner: string, q: URLSearchParams): Pr
   <h1 class="mono">${short(miner)}</h1>
   <p class="addr-full"><code>${miner}</code> <button type="button" class="copy" data-copy="${miner}">Copy</button>
   ${explorer ? html`<a href="${explorer}" rel="noopener" target="_blank">Explorer ↗</a>` : ""}
-  · <a href="/feeds/miners/${encodeURIComponent(miner)}.json">JSON</a></p>
+  · <a href="/feeds/miners/${encodeURIComponent(miner)}.json?network=${network}">JSON</a>
+  · <a href="/miner/${encodeURIComponent(miner)}?network=${otherNet}">${otherNet} view</a></p>
 </section>
 ${[...byModel.entries()].map(
   ([k, stats]) => html`<section><h2>${k}</h2>
@@ -183,7 +186,7 @@ ${[...byModel.entries()].map(
 )}
 <section>
 <h2>Receipts</h2>
-<p class="hint">Newest first. Prompts, outputs, buyer wallets and submitter DIDs are never shown.</p>
+<p class="hint">Newest 50 first; the <a href="/feeds/miners/${encodeURIComponent(miner)}.json?network=${network}">JSON feed</a> has up to 200. Prompts, outputs, buyer wallets and submitter DIDs are never shown.</p>
 <div class="table-wrap"><table class="board compact receipts"><thead><tr><th>Started</th><th>Model</th><th>Status</th><th class="num">Latency</th><th class="num">Paid FLOP</th><th>Channel / tx</th><th>Verification</th><th>Counted</th></tr></thead>
 <tbody>${feed.receipts.map(
     (r) => html`<tr>
@@ -192,7 +195,7 @@ ${[...byModel.entries()].map(
 <td data-label="Status"><span class="pill ${r.ok ? "ok" : "bad"}">${r.status}</span>${r.errorClass ? html` <small>${r.errorClass}</small>` : ""}</td>
 <td data-label="Latency" class="num">${ms(r.latencyMs as number | null)}</td>
 <td data-label="Paid FLOP" class="num">${r.paidFlop ?? "n/a"}</td>
-<td data-label="Channel / tx" class="mono">${r.channelId ? html`ch ${String(r.channelId)}` : ""}${
+<td data-label="Channel / tx" class="mono">${r.channelId ? (/^ch/i.test(String(r.channelId)) ? String(r.channelId) : `ch ${String(r.channelId)}`) : ""}${
       r.settlementTx
         ? r.settlementTxUrl
           ? html` <a href="${r.settlementTxUrl}" rel="noopener" target="_blank">${short(String(r.settlementTx))}</a>`
@@ -206,7 +209,7 @@ ${[...byModel.entries()].map(
 </section>`;
   return layout({
     title: `Miner ${short(miner)} — Flopwatch`,
-    banner: { label: meta.dataLabel, live: meta.live, network: network ?? "all", statsBuiltAt: meta.statsBuiltAt },
+    banner: { label: meta.dataLabel, live: meta.live, network, statsBuiltAt: meta.statsBuiltAt },
     body,
   });
 }
@@ -256,7 +259,10 @@ export function methodologyPage(): string {
 <ul><li><a href="/feeds/miners.json">/feeds/miners.json</a> — all miners, all windows</li>
 <li><code>/feeds/miners/&lt;ss58&gt;.json</code> — one miner, with its receipt index</li>
 <li><a href="/feeds/meta.json">/feeds/meta.json</a> — data label, counts, build time</li>
-<li><code>/data/*</code> — daily snapshots from R2</li></ul>
+<li><a href="/data/miners.json">/data/miners.json</a>, <a href="/data/meta.json">/data/meta.json</a>, <a href="/data/index.json">/data/index.json</a>: the daily snapshot from R2 (redacted like the feeds)</li>
+<li><code>/data/snapshots/YYYY-MM-DD/miners.json</code> and <code>receipts.ndjson</code>: dated snapshots</li>
+<li><code>/v1/receipts/&lt;id&gt;</code>: public metadata for one receipt (no buyer, no DID)</li></ul>
+<p><strong>Agents:</strong> send a descriptive <code>User-Agent</code> (for example <code>my-agent/1.0</code>). On <code>*.workers.dev</code>, Cloudflare's browser integrity check blocks some default library user agents, such as <code>Python-urllib</code>, with <code>403 error code: 1010</code>. That happens before Flopwatch's API runs, so the response isn't JSON.</p>
 </article>`;
   return layout({ title: "Methodology — Flopwatch", body, active: "/methodology" });
 }
@@ -266,7 +272,7 @@ export function connectPage(): string {
 <article class="prose">
 <p class="eyebrow">Sign-in with DID</p>
 <h1>Connect</h1>
-<p>Signing in works like connecting a wallet to a DeFi app. You sign a one-time challenge with your Ed25519 <code>did:key</code>. Your private key never leaves your machine. <strong>Agents should use the API, not this form</strong>. See <code>scripts/agent-cli.ts</code>.</p>
+<p>Signing in works like connecting a wallet to a DeFi app. You sign a one-time challenge with your Ed25519 <code>did:key</code>. Your private key never leaves your machine. <strong>Agents should use the API, not this form</strong>. See the <a href="https://github.com/ricardofm-1/flopwatch#readme" target="_blank" rel="noopener">agent CLI</a>.</p>
 <noscript><p class="warn">This page needs JavaScript to call the API. Agents can use the HTTP endpoints directly.</p></noscript>
 
 <section class="card connected" id="connected" hidden>
@@ -279,8 +285,9 @@ export function connectPage(): string {
 <button type="button" id="get-challenge">Request challenge</button>
 <label for="challenge">Challenge (sign these exact bytes; they're already JCS-canonical)</label>
 <textarea id="challenge" rows="6" readonly spellcheck="false"></textarea>
-<p class="hint">No DID browser extension? Sign it on the command line:</p>
-<pre><code id="cli">FLOP_DID_PRIVATE_KEY=… npx tsx scripts/agent-cli.ts sign-challenge &lt; challenge.json</code></pre>
+<p class="hint">No DID browser extension? Sign it with the agent CLI from <a href="https://github.com/ricardofm-1/flopwatch" target="_blank" rel="noopener">github.com/ricardofm-1/flopwatch</a>:</p>
+<pre><code id="cli">git clone https://github.com/ricardofm-1/flopwatch &amp;&amp; cd flopwatch &amp;&amp; npm ci
+FLOP_DID_PRIVATE_KEY=… npx tsx scripts/agent-cli.ts sign-challenge &lt; challenge.json</code></pre>
 </section>
 
 <section class="card" id="step2">

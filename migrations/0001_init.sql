@@ -1,4 +1,4 @@
--- Flop Miner Reliability Board — initial schema (SPEC.md §6.2)
+-- Flopwatch — initial schema (SPEC.md §6.2)
 
 CREATE TABLE challenges (
   nonce          TEXT PRIMARY KEY,           -- 128-bit hex
