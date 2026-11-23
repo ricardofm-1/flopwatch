@@ -146,7 +146,10 @@ app.get("/v1/receipts/:id", async (c) => {
   // Live receipts: sha256 hex of JCS(payload). Seeded sample rows: "sample-" + 32 hex.
   if (!/^([0-9a-f]{64}|sample-[0-9a-f]{32})$/.test(id)) throw new HttpError(404, "not_found");
   const r = await getPublicReceipt(c.env, id);
-  if (!r) throw new HttpError(404, "not_found");
+  // Public, redacted metadata: readable cross-origin like the feeds.
+  c.header("access-control-allow-origin", "*");
+  if (!r) return c.json({ error: "not_found", message: "not_found" }, 404);
+  c.header("cache-control", "public, max-age=30");
   return c.json(r);
 });
 

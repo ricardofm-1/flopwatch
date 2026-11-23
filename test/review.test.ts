@@ -110,3 +110,12 @@ describe("review fixes", () => {
     expect((await call("/v1/receipts/", { redirect: "manual" })).status).toBe(404);
   });
 });
+
+describe("tester follow-ups", () => {
+  it("/v1/receipts/:id is readable cross-origin (200 and 404)", async () => {
+    const miss = await call("/v1/receipts/" + "0".repeat(64));
+    expect(miss.status).toBe(404);
+    expect(miss.headers.get("access-control-allow-origin")).toBe("*");
+    expect(miss.json.error).toBe("not_found");
+  });
+});

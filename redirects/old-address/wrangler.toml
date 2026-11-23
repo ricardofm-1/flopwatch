@@ -1,0 +1,7 @@
+# Tiny redirect-only Worker that keeps the old address working. No bindings, no data.
+# Deploy: npx wrangler deploy -c redirects/old-address/wrangler.toml
+name = "flop-miner-board"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+preview_urls = false
