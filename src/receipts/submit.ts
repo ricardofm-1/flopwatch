@@ -69,17 +69,26 @@ export async function submitReceipt(
 
   const id = await sha256Hex(signed);
   const network = payload.network;
-  const channelId = payload.channelId == null ? null : String(payload.channelId);
+  const rawChannel = payload.channelId == null ? null : String(payload.channelId);
+  // On-chain channel ids (0x + 32-byte hash) are normalised to lowercase so dedupe can't be dodged by case.
+  const channelId = rawChannel && /^0x[0-9a-fA-F]{64}$/.test(rawChannel) ? rawChannel.toLowerCase() : rawChannel;
+  const onChainChannel = channelId !== null && /^0x[0-9a-f]{64}$/.test(channelId) ? channelId : null;
   const settlementTx = payload.settlementTx ? payload.settlementTx.toLowerCase() : null;
 
   const dup = await env.DB.prepare(
-    `SELECT id, nonce, settlement_tx FROM receipts
-      WHERE id = ?1 OR nonce = ?2 OR (?4 IS NOT NULL AND network = ?3 AND settlement_tx = ?4) LIMIT 1`,
+    `SELECT id, nonce, settlement_tx, channel_id FROM receipts
+      WHERE id = ?1 OR nonce = ?2
+         OR (?4 IS NOT NULL AND network = ?3 AND settlement_tx = ?4)
+         OR (?5 IS NOT NULL AND network = ?3 AND channel_id = ?5) LIMIT 1`,
   )
-    .bind(id, payload.nonce, network, settlementTx)
-    .first<{ id: string; nonce: string; settlement_tx: string | null }>();
+    .bind(id, payload.nonce, network, settlementTx, onChainChannel)
+    .first<{ id: string; nonce: string; settlement_tx: string | null; channel_id: string | null }>();
   if (dup) {
-    const why = dup.id === id ? "duplicate_receipt" : dup.nonce === payload.nonce ? "duplicate_nonce" : "duplicate_settlement";
+    const why =
+      dup.id === id ? "duplicate_receipt"
+      : dup.nonce === payload.nonce ? "duplicate_nonce"
+      : settlementTx !== null && dup.settlement_tx === settlementTx ? "duplicate_settlement"
+      : "duplicate_channel";
     throw new HttpError(409, why, "receipt already submitted", { existingId: dup.id });
   }
 
