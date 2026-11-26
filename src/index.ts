@@ -13,7 +13,7 @@ import { submitBinding } from "./receipts/bindings";
 import { buildMeta, buildMinerFeed, buildMinersFeed, getPublicReceipt, writeSnapshot } from "./stats/feeds";
 import { connectPage, homePage, methodologyPage, minerPage, notFoundPage } from "./pages/views";
 import { APP_JS, CONNECT_JS, STYLE_CSS, SUBMIT_JS } from "./pages/static";
-import { handleCron, handleVerifyBatch } from "./jobs";
+import { DAILY_CRON, handleCron, handleVerifyBatch, requeueUnconfigured } from "./jobs";
 import { isSs58 } from "./did/ss58";
 
 const app = new Hono<AppEnv>();
@@ -264,8 +264,8 @@ export default {
   async queue(batch: MessageBatch<VerifyJob>, env: Env) {
     await handleVerifyBatch(batch, env);
   },
-  async scheduled(_ctl: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(handleCron(env));
+  async scheduled(ctl: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(ctl.cron === DAILY_CRON ? handleCron(env) : requeueUnconfigured(env).then(() => undefined));
   },
 } satisfies ExportedHandler<Env, VerifyJob>;
 

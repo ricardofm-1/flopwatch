@@ -12,7 +12,8 @@ directory = "./public"
 
 # Daily: re-queue stale pending_verification, rebuild aggregates, write R2 snapshot, prune.
 [triggers]
-crons = ["17 3 * * *"]
+# 03:17 daily: full maintenance. Every 15 min: queue receipts left pending only because an RPC was not configured.
+crons = ["17 3 * * *", "*/15 * * * *"]
 
 [vars]
 # Origin that SIWD challenges are bound to. Empty = use the request origin
@@ -23,12 +24,13 @@ VERIFIER = "rpc"
 ALLOW_MOCK_VERIFIER = "false"
 # Public HTTP JSON-RPC per network. Testnet stays empty until official docs publish it (SPEC §11.4).
 FLOP_RPC_URL_DEVNET = "https://rpc.devnet.flop.network"
-FLOP_RPC_URL_TESTNET = ""
+# Official: flop.finance/testnet lists wss://testnet.flop.network/ (HTTPS JSON-RPC on the same host); genesis 0x918abd58…cfd800 checked.
+FLOP_RPC_URL_TESTNET = "https://testnet.flop.network"
 # Explorer URL templates, {hash} / {address} placeholders. Empty = no links. Do not invent.
 EXPLORER_TX_URL_DEVNET = "https://explorer.devnet.flop.network/transactions/{hash}"
-EXPLORER_TX_URL_TESTNET = ""
+EXPLORER_TX_URL_TESTNET = "https://testnet.flopscan.io/transactions/{hash}"
 EXPLORER_ACCOUNT_URL_DEVNET = "https://explorer.devnet.flop.network/account/{address}"
-EXPLORER_ACCOUNT_URL_TESTNET = ""
+EXPLORER_ACCOUNT_URL_TESTNET = "https://testnet.flopscan.io/account/{address}"
 CHALLENGE_TTL_SECONDS = "300"
 SESSION_TTL_SECONDS = "1800"
 RATE_LIMIT_SUBMIT_HOURLY = "30"
