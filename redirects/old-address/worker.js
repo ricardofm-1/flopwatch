@@ -1,6 +1,6 @@
-// Permanent redirect from the retired address (flop-miner-board.ricfmartins.workers.dev) to Flopwatch.
+// Permanent redirect from the retired address (flop-miner-board.ricfmartins.workers.dev) to Flopwatch at flopminer.watch.
 // GET/HEAD get 301; other methods get 308 so agents' POST bodies survive the redirect.
-const TARGET = "https://flopwatch.ricfmartins.workers.dev";
+const TARGET = "https://flopminer.watch";
 export default {
   fetch(request) {
     const url = new URL(request.url);

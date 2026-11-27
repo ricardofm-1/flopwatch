@@ -17,6 +17,8 @@ export default defineConfig(async () => {
             RATE_LIMIT_SUBMIT_HOURLY: "5",
             // Tests exercise the SAMPLE banner path; production sets "false" in wrangler.toml.
             SHOW_SAMPLE_DATA: "true",
+            // Tests run on https://board.test; production redirects other hosts to flopminer.watch.
+            CANONICAL_ORIGIN: "",
           },
         },
       }),
