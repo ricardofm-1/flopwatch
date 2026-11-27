@@ -117,6 +117,12 @@ pre{background:var(--base);border:1px solid var(--line);border-radius:var(--r-md
 .result:empty{display:none}
 .status{font-size:14px;color:var(--muted)}
 .addr-full code{word-break:break-all}
+.view-switch{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:14px 0 0}
+.view-switch strong{color:var(--fg)}
+.official-links{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:8px 0 0}
+h3{margin:22px 0 8px;font-family:var(--mono);font-size:14px;color:var(--fg)}
+.empty-note{color:var(--muted)}
+.board td.notes{white-space:pre-wrap;min-width:16rem;max-width:32rem;color:#D3D7DD}
 .connected-as{margin:0;color:var(--ok);font-family:var(--mono);font-weight:700;word-break:break-all}
 .connected-as .mono{font-weight:400}
 .card.connected{border-color:rgba(50,215,75,.35)}
@@ -246,7 +252,8 @@ export const SUBMIT_JS = `
   });
   $('submit').addEventListener('click', async function () {
     var env; try { env = JSON.parse($('envelope').value); } catch (_) { $('submit-result').textContent = 'Envelope is not valid JSON.'; return; }
-    var r = await fetch('/v1/receipts', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(env) });
+    var endpoint = $('submit').getAttribute('data-endpoint') || '/v1/receipts';
+    var r = await fetch(endpoint, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(env) });
     var j = await r.json().catch(function () { return {}; });
     $('submit-result').textContent = r.status + ' ' + JSON.stringify(j, null, 2);
   });

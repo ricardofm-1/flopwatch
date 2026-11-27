@@ -17,7 +17,7 @@ export interface SiwdChallenge {
 }
 
 export const SIWD_STATEMENT =
-  "Sign in to Flopwatch to submit miner receipts. This signature does not move funds.";
+  "Sign in to Flopwatch to submit miner receipts and reviews. This signature does not move funds.";
 
 export async function issueChallenge(
   env: Env,

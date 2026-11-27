@@ -21,6 +21,7 @@ const MARK = `<svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable
 export function layout(opts: { title: string; banner?: Banner; body: Raw; scripts?: string[]; active?: string }): string {
   const nav = [
     ["/", "Board"],
+    ["/reviews", "Reviews"],
     ["/methodology", "Methodology"],
     ["/connect", "Connect"],
     ["/feeds/miners.json", "JSON"],

@@ -10,8 +10,11 @@ import { isDidKey } from "./did/didkey";
 import { jcs } from "./receipts/jcs";
 import { submitReceipt } from "./receipts/submit";
 import { submitBinding } from "./receipts/bindings";
+import { submitReview } from "./reviews/submit";
+import { buildReviewsFeed, getPublicReview } from "./reviews/feeds";
 import { buildMeta, buildMinerFeed, buildMinersFeed, getPublicReceipt, writeSnapshot } from "./stats/feeds";
 import { connectPage, homePage, methodologyPage, minerPage, notFoundPage } from "./pages/views";
+import { reviewsPage } from "./pages/reviews";
 import { APP_JS, CONNECT_JS, STYLE_CSS, SUBMIT_JS } from "./pages/static";
 import { DAILY_CRON, handleCron, handleVerifyBatch, requeueUnconfigured } from "./jobs";
 import { isSs58 } from "./did/ss58";
@@ -153,6 +156,27 @@ app.get("/v1/receipts/:id", async (c) => {
   return c.json(r);
 });
 
+// ---------- Buyer reviews (FLOPWATCH-BUYER-REVIEWS-SPEC) ----------
+app.post("/v1/reviews", requireSession, async (c) => {
+  const body = await readJson(c.req.raw);
+  const res = await submitReview(c.env, {
+    sessionDid: c.get("did")!,
+    ip: clientIp(c.req.raw),
+    waitUntil: (p) => c.executionCtx.waitUntil(p),
+  }, body);
+  return c.json(res.body, res.httpStatus);
+});
+
+app.get("/v1/reviews/:id", async (c) => {
+  const id = c.req.param("id");
+  c.header("access-control-allow-origin", "*");
+  if (!/^[0-9a-f]{64}$/.test(id)) return c.json({ error: "not_found", message: "not_found" }, 404);
+  const r = await getPublicReview(c.env, id);
+  if (!r) return c.json({ error: "not_found", message: "not_found" }, 404);
+  c.header("cache-control", "public, max-age=30");
+  return c.json(r);
+});
+
 app.post("/v1/bindings", requireSession, async (c) => {
   const ip = clientIp(c.req.raw);
   await enforceRateLimits(c.env, [{ key: `binding:ip:${ip}:h`, windowSeconds: 3600, max: 20 }]);
@@ -179,6 +203,9 @@ async function cachedJson(c: AppCtx, build: () => Promise<unknown | null>) {
 }
 const netParam = (v: string | undefined) => (v === "testnet" || v === "devnet" ? v : undefined);
 
+app.get("/feeds/reviews.json", (c) =>
+  cachedJson(c, () => buildReviewsFeed(c.env, { network: c.req.query("network"), window: c.req.query("window") })),
+);
 app.get("/feeds/meta.json", (c) => cachedJson(c, () => buildMeta(c.env)));
 app.get("/feeds/miners.json", (c) => cachedJson(c, () => buildMinersFeed(c.env, { network: netParam(c.req.query("network")) })));
 app.get("/v1/miners", (c) => cachedJson(c, () => buildMinersFeed(c.env, { network: netParam(c.req.query("network")) })));
@@ -195,7 +222,7 @@ app.get("/data/*", async (c) => {
   const path = new URL(c.req.url).pathname.slice("/data/".length);
   let objKey: string | null = null;
   if (/^(miners|index|meta)\.json$/.test(path)) objKey = `data/${path}`;
-  else if (/^snapshots\/\d{4}-\d{2}-\d{2}\/(miners\.json|receipts\.ndjson)$/.test(path)) objKey = path;
+  else if (/^snapshots\/\d{4}-\d{2}-\d{2}\/(miners\.json|receipts\.ndjson|reviews\.ndjson)$/.test(path)) objKey = path;
   if (!objKey) return c.json({ error: "not_found" }, 404);
   let obj = await c.env.BUCKET.get(objKey);
   if (!obj && objKey.startsWith("data/")) {
@@ -250,6 +277,7 @@ app.get("/miner/:id", async (c) => {
   return cachedPage(c, () => minerPage(c.env, id, new URL(c.req.url).searchParams));
 });
 app.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
+app.get("/reviews", (c) => cachedPage(c, () => reviewsPage(c.env, new URL(c.req.url).searchParams)));
 app.get("/methodology", () => page(methodologyPage()));
 app.get("/connect", (c) => {
   c.header("cache-control", "no-store");

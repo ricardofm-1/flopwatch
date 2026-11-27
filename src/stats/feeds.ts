@@ -1,5 +1,6 @@
 import type { Env, Network } from "../env";
 import { explorerLink, networkConfig, NETWORKS } from "../env";
+import { minerReviews, reviewCounts, reviewSnapshotNdjson } from "../reviews/feeds";
 import { ensureStatsFresh, getMeta, hasLiveCounted, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
 
 export const SCHEMA_VERSION = 1;
@@ -80,6 +81,7 @@ export async function buildMeta(env: Env) {
     countedLiveReceipts: counts?.counted_live ?? 0,
     sampleReceipts: counts?.sample_rows ?? 0,
     pendingVerification: counts?.pending ?? 0,
+    ...(await reviewCounts(env)),
     site: "Flopwatch",
     notice: "Observed, verified receipts. Independent; not an official FLOP Network ranking.",
   };
@@ -157,7 +159,11 @@ export async function buildMinerFeed(
     .bind(miner, opts.network ?? null, meta.live ? 1 : 0, Math.min(opts.limit ?? 200, 500))
     .all<Record<string, unknown>>(),
   ]);
-  if (stats.results.length === 0 && receipts.results.length === 0) return null;
+  if (stats.results.length === 0 && receipts.results.length === 0) {
+    // A miner can have reviews without receipts.
+    const any = await env.DB.prepare("SELECT 1 AS x FROM reviews WHERE miner = ? AND counted = 1 LIMIT 1").bind(miner).first();
+    if (!any) return null;
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -165,6 +171,7 @@ export async function buildMinerFeed(
     miner,
     stats: stats.results.map((r) => toFeedRow(env, r)),
     receipts: receipts.results.map((r) => publicReceipt(env, r)),
+    reviews: await minerReviews(env, miner, opts.network),
   };
 }
 
@@ -189,6 +196,7 @@ export async function writeSnapshot(env: Env, now = new Date()): Promise<string>
   await Promise.all([
     env.BUCKET.put(`snapshots/${day}/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`snapshots/${day}/receipts.ndjson`, ndjson, { httpMetadata: { contentType: "application/x-ndjson" } }),
+    env.BUCKET.put(`snapshots/${day}/reviews.ndjson`, await reviewSnapshotNdjson(env, since), { httpMetadata: { contentType: "application/x-ndjson" } }),
     env.BUCKET.put(`data/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`data/index.json`, JSON.stringify({ ...meta, latestSnapshot: `snapshots/${day}/`, generatedAt: now.toISOString() }), json),
     env.BUCKET.put(`data/meta.json`, JSON.stringify({ ...meta, generatedAt: now.toISOString() }), json),

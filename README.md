@@ -43,11 +43,14 @@ npx tsx scripts/agent-cli.ts flush                   # retry anything kept in ./
 | GET | `/v1/auth/session` · POST `/v1/auth/logout` | Logout revokes the token's `jti`. |
 | POST | `/v1/receipts` | Bearer or cookie. `{ payload, signature }`. **201** decided (counted or stored-not-counted), **202** pending chain verification, 400/401/403/409/429 with an `error` code. |
 | GET | `/v1/receipts/:id` | Public metadata for a live id (64 hex) or a sample id (`sample-` + 32 hex). Buyer and DID are redacted. |
+| POST | `/v1/reviews` | Bearer or cookie. `{ payload, signature, walletSignature? }`, a `flop.miner-review` tied to an on-chain channel. **201** decided, **202** pending (RPC, or channel not Closed yet), 400/401/403 `buyer_not_proven`/409 `duplicate_channel`/429. |
+| GET | `/v1/reviews/:id` | Public review metadata. Buyer and DID redacted; CORS `*`. |
+| GET | `/feeds/reviews.json` | Buyer-review aggregates. `?network=testnet\|devnet&window=7d\|30d\|all` |
 | POST | `/v1/bindings` | Optional DID ↔ SS58 binding. sr25519 wallet signature plus Ed25519 DID signature over the same JCS payload. |
 | GET | `/feeds/miners.json`, `/feeds/miners/:ss58.json`, `/feeds/meta.json`, `/v1/miners` | Edge-cached for 60 s. `?network=testnet\|devnet` |
 | GET | `/data/miners.json`, `/data/meta.json`, `/data/index.json`, `/data/snapshots/YYYY-MM-DD/{miners.json,receipts.ndjson}` | Daily R2 snapshots. The first one is built on demand if the cron hasn't run yet. |
 
-Pages: `/`, `/miner/:ss58`, `/methodology`, `/connect`. The board, miner and methodology pages are server-rendered and work with JavaScript off. `/connect` needs JavaScript; agents use the API directly.
+Pages: `/`, `/reviews` (also `/?view=reviews`), `/miner/:ss58`, `/methodology`, `/connect`. The board, miner and methodology pages are server-rendered and work with JavaScript off. `/connect` needs JavaScript; agents use the API directly.
 
 ### User-Agent (agents)
 
@@ -58,6 +61,49 @@ Send a descriptive `User-Agent` such as `my-agent/1.0`; `scripts/agent-cli.ts` s
 - Receipt id = `sha256(JCS(payload))`.
 - Signatures are Ed25519 over the UTF-8 bytes of the RFC 8785 canonical JSON, encoded as base64url.
 - The DID must be a `did:key` with multicodec `0xed01`.
+
+## Buyer reviews
+
+Receipts record whether a paid session settled, how fast it was and what it cost. Reviews add what the buyer actually got: four 1–5 scores (quality, latency, cost, delivery), a `delivered` flag, an optional prompt category and a short note. The rules are in [/methodology#reviews](https://flopwatch.ricfmartins.workers.dev/methodology#reviews), and the full spec is FLOPWATCH-BUYER-REVIEWS-SPEC v1. FLOPScan stays the official chain-side surface; Flopwatch links to it and doesn't copy it.
+
+A review counts only when:
+- the on-chain channel is `Closed` and its buyer and miner match the review;
+- the reviewer proves they own the buyer wallet, through a `/v1/bindings` binding, a `walletSignature` on the review, or a counted receipt for that channel;
+- it's the only review for that channel;
+- it arrives within 30 days of the channel opening;
+- it isn't self-dealing;
+- the buyer wallet has had at most 10 reviews counted in the last 7 days.
+
+Scores are shrunk toward 3.0 with weight 5. Only miners with n ≥ 5 are ranked.
+
+From an agent, after a **wallet-funded** `runDirectSession` (`@flop-labs/sdk` ≥ 0.11.0):
+
+```ts
+// session.json: the DirectSessionResult. Only confirmed fields are used. reply, receipts[].output
+// and sessionSeed are never copied. paidFlop is set only from a finalized SettledResult.minerPaid.
+import { writeFileSync } from "node:fs";
+const result = await runDirectSession(/* … */);
+writeFileSync("session.json", JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
+writeFileSync("input.json", JSON.stringify({
+  network: "testnet",
+  buyer: signerSs58,                 // the wallet that paid
+  model: "qwen/qwen3-8b",
+  scores: { quality: 4, latency: 3, cost: 4, delivery: 5 },   // yours to give, 1–5 or null
+  delivered: true,
+  promptCategory: "coding",          // optional
+}));
+```
+
+```sh
+npx tsx scripts/agent-cli.ts review-from-session session.json input.json > review.json
+npx tsx scripts/agent-cli.ts submit-review review.json              # if you have a binding or a counted receipt
+# …or prove the buyer wallet with an sr25519 signature over the exact payload:
+npx tsx scripts/agent-cli.ts sign-review review.json > review.env.json
+npx tsx scripts/agent-cli.ts review-signing-input review.env.json   # bytes for the wallet to sign
+npx tsx scripts/agent-cli.ts submit-review review.env.json --wallet-sig <hex>
+```
+
+A `202` means the review is stored as pending, for example while a `forceSettle` challenge window is still open; it's re-checked automatically. A `409 duplicate_channel` means that session was already reviewed.
 
 ## Rules enforced
 
@@ -98,17 +144,15 @@ GitHub Actions:
 - `deploy.yml` runs tests, migrations and the deploy on `main`.
 - It needs the repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
-## Deliberately not guessed (SPEC §11)
+## Chain facts: confirmed vs open
 
-These stay as config or stubs until testnet publishes them:
+Confirmed against the live chains (these are the values the code uses):
+- **Testnet RPC** `https://testnet.flop.network` (flop.finance/testnet lists `wss://testnet.flop.network/`). The Worker checks the genesis `0x918abd58…cfd800` before it trusts the RPC.
+- **FLOPScan:** `/account/{address}`, `/transactions/{hash}` and `/markets?tab=reliability` all exist.
+- **Channel storage is identical on Devnet and Testnet** (checked 27 Nov 2026 against both chains' metadata): `ComputeChannel::Channels` (Blake2_128Concat), the field layout and the state variants. `Timestamp::Now` uses the same key on both.
+- **FLOP has 18 decimals.** Amounts convert to planck exactly (`flopToPlanck`, `planckToFlop`).
 
-- `FLOP_RPC_URL_TESTNET` and the explorer URL templates are empty.
-- `RpcVerifier` handles both networks:
-  - On devnet it checks that `settlementTx` is included in the claimed block, using lean JSON-RPC and blake2b-256.
-  - On testnet it returns `unavailable` until `matchProofFields` is written against the published ComputeChannel / MeteringVerifier format, so nothing on testnet counts without a full check.
-  - Channel-only receipts (no settlement tx) wait for the same work.
-- Also still open:
-  - the default stats window (the UI defaults to all-time, with 7d/30d filters)
-  - the decimal scale for FLOP amounts (medians use JS numbers)
-  - miner discovery
-  - an official DID ↔ wallet binding
+Still open, so the code leaves them out rather than guessing:
+- `minerPaid` lives on the `Settled` event, and the lean RPC path doesn't decode events. A review's `paidFlop` is checked only against a counted receipt for the same channel; otherwise it's marked `paid_unverified`.
+- A per-miner FLOPScan reliability URL (`FLOPSCAN_MINER_RELIABILITY_URL_TESTNET` stays empty).
+- An official DID ↔ wallet binding, miner discovery, and the Testnet gateway (excluded anyway).

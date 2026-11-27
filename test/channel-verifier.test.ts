@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RpcVerifier, channelsStorageKey, decodeChannel, flopToPlanck } from "../src/verify/rpc";
+import { KNOWN_GENESIS, RpcVerifier, channelsStorageKey, decodeChannel, flopToPlanck } from "../src/verify/rpc";
 import { ss58Encode } from "../src/did/ss58";
 import type { ReceiptPayload } from "../src/receipts/schema";
 import { envelope, login, makePayload, newKey, submit, uniqueIp } from "./helpers";
@@ -25,7 +25,10 @@ function fakeRpc(storage: string | null) {
   const fetchFn = async (_: RequestInfo, init?: RequestInit) => {
     const { method, params } = JSON.parse(String(init?.body));
     calls.push(method);
-    const result = method === "state_getStorage" ? (params[0] === KEY ? storage : null) : null;
+    const result =
+      method === "state_getStorage" ? (params[0] === KEY ? storage : null)
+      : method === "chain_getBlockHash" && params[0] === 0 ? KNOWN_GENESIS.testnet
+      : null;
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));
   };
   return { fetchFn, calls };

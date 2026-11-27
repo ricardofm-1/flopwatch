@@ -21,10 +21,22 @@ export interface Env {
   RATE_LIMIT_CHALLENGE_HOURLY?: string;
   VERIFY_INLINE_TIMEOUT_MS?: string;
   VERIFY_MAX_ATTEMPTS?: string;
+  FLOPSCAN_MARKETS_URL_DEVNET?: string;
+  FLOPSCAN_MARKETS_URL_TESTNET?: string;
+  FLOPSCAN_MINER_RELIABILITY_URL_DEVNET?: string;
+  FLOPSCAN_MINER_RELIABILITY_URL_TESTNET?: string;
+  REVIEW_MAX_PER_DID_DAILY?: string;
+  REVIEW_MAX_PER_BUYER_7D?: string;
+  REVIEW_FRESHNESS_DAYS?: string;
+  REVIEW_MIN_N?: string;
+  REVIEW_BAYES_M?: string;
+  REVIEW_BAYES_PRIOR?: string;
 }
 
+/** Queue message. Older messages carry only receiptId. */
 export interface VerifyJob {
-  receiptId: string;
+  receiptId?: string;
+  reviewId?: string;
 }
 
 export function intVar(v: string | undefined, fallback: number): number {
@@ -41,6 +53,8 @@ export function networkConfig(env: Env, network: Network) {
     rpcUrl: (env[`FLOP_RPC_URL_${up}`] ?? "").trim(),
     txUrl: (env[`EXPLORER_TX_URL_${up}`] ?? "").trim(),
     accountUrl: (env[`EXPLORER_ACCOUNT_URL_${up}`] ?? "").trim(),
+    marketsUrl: (env[`FLOPSCAN_MARKETS_URL_${up}`] ?? "").trim(),
+    minerReliabilityUrl: (env[`FLOPSCAN_MINER_RELIABILITY_URL_${up}`] ?? "").trim(),
   };
 }
 
