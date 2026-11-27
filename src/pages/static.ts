@@ -130,6 +130,7 @@ h3{margin:22px 0 8px;font-family:var(--mono);font-size:14px;color:var(--fg)}
 .preview-error{color:var(--bad);font-size:14px}
 .preview-rating{font-family:var(--mono);font-size:15px;color:var(--fg)}
 .preview-stars{color:#FFD60A;letter-spacing:2px;font-size:18px}
+.preview-connect{color:var(--muted);font-size:13px}
 .preview-notes{color:#D3D7DD;font-style:italic;white-space:pre-wrap}
 .preview dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0;font-size:13px}
 .preview dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:2px}
@@ -314,6 +315,13 @@ export const SUBMIT_JS = `
       var n = document.createElement('strong'); n.textContent = ' ' + d.rating + ' / 5';
       head.appendChild(s); head.appendChild(n);
       box.appendChild(head);
+      if (!connected) {
+        var c = document.createElement('p'); c.className = 'preview-connect';
+        c.appendChild(document.createTextNode('Looks good. '));
+        var a = document.createElement('a'); a.href = '/connect'; a.textContent = 'Connect your DID'; c.appendChild(a);
+        c.appendChild(document.createTextNode(' to submit it.'));
+        box.appendChild(c);
+      }
       if (d.notes) { var q = document.createElement('p'); q.className = 'preview-notes'; q.textContent = '“' + d.notes + '”'; box.appendChild(q); }
     }
     if (d.fields.length) {
@@ -329,7 +337,6 @@ export const SUBMIT_JS = `
 
   window.flopOnSession(function (did) {
     connected = !!did;
-    ['envelope', 'envelope-file'].forEach(function (id) { $(id).disabled = !connected; });
     var note = $('submit-auth-note'); if (note) note.hidden = connected;
     if (!connected) $('submit-result').textContent = '';
     render();
