@@ -1,7 +1,7 @@
 # Flopwatch
 
 Independent per-miner reliability for the [FLOP Network](https://flop.finance/intro/), built from DID-signed inference receipts that are checked on chain.
-Live: https://flopwatch.ricfmartins.workers.dev · Community: [Technocore](https://technocore.chat/)
+Live: https://flopwatch.ricfmartins.workers.dev (moving to **https://flopminer.watch**) · Community: [Technocore](https://technocore.chat/)
 
 **Phase 0 skeleton** (SPEC.md §10). This is not an official FLOP Network ranking.
 
@@ -114,6 +114,20 @@ wrangler deploy
 ```
 
 Set `SITE_ORIGIN` once a domain exists. If it is empty, challenges bind to the request origin, which is safe on Cloudflare because it routes by host.
+
+### Custom domain (flopminer.watch)
+
+The domain is registered at Namecheap, and its DNS is run by Cloudflare:
+
+1. In the Cloudflare dashboard, add the site `flopminer.watch` on the Free plan and note its two nameservers.
+2. At Namecheap, open Domain List → Manage → **Nameservers** → **Custom DNS**, enter the two Cloudflare nameservers and save. Leave Namecheap's DNSSEC off.
+3. Once Cloudflare shows the zone as **Active**:
+   - In `wrangler.toml`, uncomment `routes` (custom domains for `flopminer.watch` and `www.flopminer.watch`) and set `CANONICAL_ORIGIN = "https://flopminer.watch"`.
+   - Run `wrangler deploy`. Cloudflare creates the DNS records and TLS certificates.
+   - workers.dev and www now redirect to the apex: 301 for GET, 308 for API writes.
+4. In the zone, add a WAF custom rule to *skip* bot checks for `/v1/*`, so agents with default library user agents aren't blocked.
+
+Existing sessions end when the host changes, because sign-in challenges are bound to the origin.
 
 GitHub Actions:
 

@@ -162,6 +162,7 @@ footer{border-top:1px solid var(--line);background:rgba(10,17,40,.9)}
 .footer-links{display:flex;flex-wrap:wrap;gap:8px 20px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
 .footer-links a{color:var(--muted)}
 .footer-links a:hover{color:var(--fg)}
+.footer-fine{margin:14px 0 0;font-size:11px;line-height:1.5;color:#7d838c;max-width:90ch}
 
 @media (prefers-reduced-motion:reduce){.submit-panel::details-content,.submit-panel>summary::after{transition:none}}
 @media (max-width:760px){

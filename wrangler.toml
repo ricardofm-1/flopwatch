@@ -6,6 +6,12 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 preview_urls = false
 
+# Custom domain (zone flopminer.watch must be active on this Cloudflare account first). Uncomment to attach:
+# routes = [
+#   { pattern = "flopminer.watch", custom_domain = true },
+#   { pattern = "www.flopminer.watch", custom_domain = true },
+# ]
+
 # Self-hosted fonts (OFL), served before the Worker runs.
 [assets]
 directory = "./public"
@@ -19,6 +25,9 @@ crons = ["17 3 * * *", "*/15 * * * *"]
 # Origin that SIWD challenges are bound to. Empty = use the request origin
 # (safe on Cloudflare, which routes by host). Set explicitly once a domain exists.
 SITE_ORIGIN = ""
+# When set (e.g. "https://flopminer.watch"), every other host (workers.dev, www.) is redirected here:
+# 301 for GET/HEAD, 308 for API writes so agents' POST bodies survive. Empty = no redirect.
+CANONICAL_ORIGIN = ""
 # "rpc" in production. "mock" is refused unless ALLOW_MOCK_VERIFIER = "true".
 VERIFIER = "rpc"
 ALLOW_MOCK_VERIFIER = "false"
