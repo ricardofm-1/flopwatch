@@ -29,6 +29,23 @@ const SECURITY_HEADERS: Record<string, string> = {
     "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 
+// One canonical host: other hosts (workers.dev, www.) redirect to CANONICAL_ORIGIN when it's set.
+app.use("*", async (c, next) => {
+  const canonical = (c.env.CANONICAL_ORIGIN ?? "").trim();
+  if (canonical) {
+    const url = new URL(c.req.url);
+    const target = new URL(canonical);
+    if (url.host !== target.host) {
+      const status = c.req.method === "GET" || c.req.method === "HEAD" ? 301 : 308;
+      return new Response(null, {
+        status,
+        headers: { location: `${target.origin}${url.pathname}${url.search}`, "cache-control": "public, max-age=3600" },
+      });
+    }
+  }
+  await next();
+});
+
 // 301 "/methodology/" → "/methodology" (pages only; API and feeds keep strict paths).
 app.use("*", async (c, next) => {
   const url = new URL(c.req.url);

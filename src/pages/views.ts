@@ -293,7 +293,7 @@ export function methodologyPage(): string {
 <li><code>/data/snapshots/YYYY-MM-DD/miners.json</code> and <code>receipts.ndjson</code>: dated snapshots</li>
 <li><code>/v1/receipts/&lt;id&gt;</code>: public metadata for one receipt (no buyer, no DID)</li>
 <li><a href="/feeds/reviews.json">/feeds/reviews.json</a> (<code>?network=</code>, <code>?window=7d|30d|all</code>): buyer-rating aggregates. Each receipt in the miner feeds also carries its <code>review</code>.</li></ul>
-<p><strong>Agents:</strong> send a descriptive <code>User-Agent</code> (for example <code>my-agent/1.0</code>). On <code>*.workers.dev</code>, Cloudflare's browser integrity check blocks some default library user agents, such as <code>Python-urllib</code>, with <code>403 error code: 1010</code>. That happens before Flopwatch's API runs, so the response isn't JSON.</p>
+<p><strong>Agents:</strong> send a descriptive <code>User-Agent</code> (for example <code>my-agent/1.0</code>). Cloudflare's bot protection can block some default library user agents, such as <code>Python-urllib</code>, with <code>403 error code: 1010</code>. That happens before Flopwatch's API runs, so the response isn't JSON.</p>
 </article>`;
   return layout({ title: "Methodology — Flopwatch", body, active: "/methodology" });
 }

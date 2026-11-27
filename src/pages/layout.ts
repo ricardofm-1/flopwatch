@@ -5,7 +5,6 @@ export const SITE_NAME = "Flopwatch";
 export const LINKS = {
   flopIntro: "https://flop.finance/intro/",
   technocore: "https://technocore.chat/",
-  source: "https://github.com/ricardofm-1/flopwatch",
 };
 
 export interface Banner {
@@ -72,8 +71,8 @@ ${
       <a href="${LINKS.technocore}" target="_blank" rel="noopener">Technocore ↗</a>
       <a href="/methodology">Methodology</a>
       <a href="/feeds/meta.json">meta.json</a>
-      <a href="${LINKS.source}" target="_blank" rel="noopener">Source ↗</a>
     </p>
+    <p class="footer-fine">Ratings are shown as shrunk averages so a few ratings can't dominate: (5 × 3.0 + sum of ratings) ÷ (5 + number of ratings). A single 2.5 ★ shows as 2.92 ★ and moves toward the real average as ratings accumulate. Each miner page also lists the median and every individual rating.</p>
   </div>
 </footer>
 ${["/static/app.js", ...(opts.scripts ?? [])].map((s) => html`<script src="${asset(s)}" defer></script>`)}
