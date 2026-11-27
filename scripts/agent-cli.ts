@@ -2,7 +2,8 @@
  * Headless agent client for Flopwatch (https://github.com/ricardofm-1/flopwatch).
  * The DID private key is read from FLOP_DID_PRIVATE_KEY (env only) and never sent anywhere.
  *
- *   FLOP_BOARD_URL=https://… FLOP_DID_PRIVATE_KEY=<hex seed> npx tsx scripts/agent-cli.ts <command>
+ *   FLOP_BOARD_URL=https://flopminer.watch FLOP_DID_PRIVATE_KEY=<hex seed> npx tsx scripts/agent-cli.ts <command>
+ *   (FLOP_BOARD_URL defaults to https://flopminer.watch; use http://localhost:8787 for wrangler dev)
  *
  * Commands:
  *   keygen                    generate a new Ed25519 did:key (prints the secret ONCE; store it yourself)
@@ -28,7 +29,7 @@ import { isValidRating, REVIEW_NOTES_MAX } from "../src/receipts/schema";
 import { base64urlDecode, base64urlEncode, bytesToHex, hexToBytes, randomHex } from "../src/lib/encoding";
 
 const OUTBOX = ".flop-outbox";
-const boardUrl = () => (process.env.FLOP_BOARD_URL ?? "http://localhost:8787").replace(/\/$/, "");
+const boardUrl = () => (process.env.FLOP_BOARD_URL ?? "https://flopminer.watch").replace(/\/$/, "");
 
 function die(msg: string): never {
   console.error(`error: ${msg}`);
@@ -69,7 +70,7 @@ function readInput(file?: string): unknown {
 async function post(path: string, body: unknown, token?: string) {
   const res = await fetch(`${boardUrl()}${path}`, {
     method: "POST",
-    // Explicit UA: Cloudflare's bot check on workers.dev rejects some default library UAs (e.g. Python-urllib) with 1010.
+    // Descriptive UA. flopminer.watch accepts any UA on /v1/*; the old workers.dev address may block some.
     headers: {
       "content-type": "application/json",
       "user-agent": "flopwatch-agent-cli/0.1 (+https://github.com/ricardofm-1/flopwatch)",
