@@ -42,6 +42,8 @@ RATE_LIMIT_SUBMIT_DAILY = "200"
 RATE_LIMIT_CHALLENGE_HOURLY = "60"
 VERIFY_INLINE_TIMEOUT_MS = "2500"
 VERIFY_MAX_ATTEMPTS = "12"
+# "false" hides the seeded SAMPLE rows (they stay in D1) and shows the real, possibly empty, live board.
+SHOW_SAMPLE_DATA = "false"
 # Buyer reviews (FLOPWATCH-BUYER-REVIEWS-SPEC §12)
 REVIEW_MAX_PER_DID_DAILY = "20"
 REVIEW_MAX_PER_BUYER_7D = "10"

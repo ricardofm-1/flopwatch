@@ -89,6 +89,14 @@ export function computeStats(rows: ReceiptRow[]): MinerStats {
   };
 }
 
+/** SHOW_SAMPLE_DATA="false" hides seeded SAMPLE rows everywhere (they stay in D1; flip back to show them). */
+export const samplesEnabled = (env: Env) => (env.SHOW_SAMPLE_DATA ?? "true").trim().toLowerCase() !== "false";
+
+/** Sample rows are shown only when enabled and no real counted testnet receipt exists yet. */
+export async function showingSamples(env: Env): Promise<boolean> {
+  return samplesEnabled(env) && !(await hasLiveCounted(env));
+}
+
 /** A real counted testnet receipt exists (mock-verified rows never qualify). */
 export async function hasLiveCounted(env: Env): Promise<boolean> {
   const r = await env.DB.prepare(
@@ -154,7 +162,7 @@ export async function recomputeGroup(
 
 /** Full rebuild (daily cron, after seeding, or when the first live receipt lands). */
 export async function recomputeAll(env: Env, now = Date.now()): Promise<number> {
-  const includeSamples = !(await hasLiveCounted(env));
+  const includeSamples = await showingSamples(env);
   const { results } = await env.DB.prepare(
     `SELECT DISTINCT network, miner, model FROM receipts WHERE counted = 1 AND (is_sample = 0 OR ?1 = 1)`,
   )

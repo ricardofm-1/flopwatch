@@ -31,6 +31,7 @@ export interface Env {
   REVIEW_MIN_N?: string;
   REVIEW_BAYES_M?: string;
   REVIEW_BAYES_PRIOR?: string;
+  SHOW_SAMPLE_DATA?: string;
 }
 
 /** Queue message. Older messages carry only receiptId. */

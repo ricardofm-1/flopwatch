@@ -1,7 +1,7 @@
 import type { Env, Network } from "../env";
 import { explorerLink, networkConfig, NETWORKS } from "../env";
 import { minerReviews, reviewCounts, reviewSnapshotNdjson } from "../reviews/feeds";
-import { ensureStatsFresh, getMeta, hasLiveCounted, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
+import { ensureStatsFresh, getMeta, hasLiveCounted, samplesEnabled, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
 
 export const SCHEMA_VERSION = 1;
 
@@ -62,7 +62,10 @@ function toFeedRow(env: Env, r: StatsRow): MinerFeedRow {
 
 export async function buildMeta(env: Env) {
   await ensureStatsFresh(env);
-  const live = await hasLiveCounted(env);
+  // `live` drives the banner and hides sample rows: true once a real counted testnet receipt exists,
+  // or when sample data is switched off. countedLiveReceipts always reports the real count.
+  const hasLive = await hasLiveCounted(env);
+  const live = hasLive || !samplesEnabled(env);
   const counts = await env.DB.prepare(
     `SELECT
        SUM(CASE WHEN counted = 1 AND is_sample = 0 AND verified_by IS NOT NULL AND verified_by != 'mock' THEN 1 ELSE 0 END) AS counted_live,
@@ -79,6 +82,7 @@ export async function buildMeta(env: Env) {
     windows: WINDOWS,
     statsBuiltAt: await getMeta(env, "stats_built_at"),
     countedLiveReceipts: counts?.counted_live ?? 0,
+    sampleDataShown: !live,
     sampleReceipts: counts?.sample_rows ?? 0,
     pendingVerification: counts?.pending ?? 0,
     ...(await reviewCounts(env)),

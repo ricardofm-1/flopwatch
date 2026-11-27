@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { intVar } from "../env";
 import { getVerifier, type VerifyOutcome } from "../verify";
 import type { ReceiptPayload } from "./schema";
-import { hasLiveCounted, recomputeAll, recomputeGroup, setMeta } from "../stats/aggregate";
+import { hasLiveCounted, recomputeAll, recomputeGroup, setMeta, showingSamples } from "../stats/aggregate";
 
 export interface ReceiptState {
   id: string;
@@ -85,7 +85,7 @@ export async function runVerification(
       // First real counted testnet receipt: drop SAMPLE rows from all aggregates.
       await recomputeAll(env);
     } else {
-      await recomputeGroup(env, payload, !(await hasLiveCounted(env)));
+      await recomputeGroup(env, payload, await showingSamples(env));
       await setMeta(env, "stats_built_at", new Date(now).toISOString());
     }
   }

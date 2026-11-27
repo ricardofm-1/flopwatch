@@ -109,3 +109,25 @@ describe("aggregation (acceptance 6)", () => {
     expect(home.text).not.toContain(sampleMiner.slice(0, 6));
   });
 });
+
+describe("SHOW_SAMPLE_DATA", () => {
+  it('"false" hides sample rows and labels the board LIVE TESTNET DATA without faking a live receipt', async () => {
+    const { buildMeta } = await import("../src/stats/feeds");
+    const { recomputeAll } = await import("../src/stats/aggregate");
+    await env.DB.prepare("DELETE FROM receipts").run();
+    await env.DB.prepare(
+      `INSERT INTO receipts (id, network, did, buyer, miner, model, status, ok, max_flop, started_at, submitted_at, nonce,
+        payload_json, signature, received_at, verification, counted, is_sample, latency_ms)
+       VALUES ('s-hide','testnet','did:key:sample',?, ?, 'sample-model','settled',1,'0.01','2026-11-20T10:00:00Z','2026-11-20T10:00:01Z','n-hide','{}','',?, 'passed',1,1,500)`,
+    ).bind(randomSs58(), randomSs58(), Date.now()).run();
+    const off = { ...env, SHOW_SAMPLE_DATA: "false" } as typeof env;
+    await recomputeAll(off);
+    const meta = await buildMeta(off);
+    expect(meta).toMatchObject({ dataLabel: "LIVE TESTNET DATA", live: true, countedLiveReceipts: 0, sampleDataShown: false });
+    const rows = await env.DB.prepare("SELECT COUNT(*) AS n FROM miner_stats WHERE is_sample = 1").first<{ n: number }>();
+    expect(rows!.n).toBe(0);
+    // Default (tests) still shows samples.
+    await recomputeAll(env);
+    expect((await buildMeta(env)).dataLabel).toBe("SAMPLE — NOT LIVE DATA");
+  });
+});
