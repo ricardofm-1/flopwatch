@@ -276,7 +276,7 @@ export function methodologyPage(): string {
 <li><strong>A rating counts when its receipt counts.</strong> The session was verified on chain, the receipt is not a duplicate, and there's no self-dealing. The on-chain check ties the signer's receipt to the paying wallet, so no separate proof is needed. Failed or timed-out sessions are rated too; that's part of the signal.</li>
 <li><strong>Per-buyer cap.</strong> Only a buyer wallet's first 10 counted ratings in any 7 days count. Later receipts still count for reliability, but their rating is set aside as <code>buyer_review_cap</code>.</li>
 <li><strong>Shrinkage.</strong> The rating shown is <code>(5 × 3.0 + Σratings) ÷ (5 + n)</code>, so a single 5-star rating shows as 3.33, not 5.</li>
-<li><strong>Ranking needs n ≥ 5.</strong> Miners with fewer counted ratings still show on their own page, marked <span class="warn">low n</span>, but aren't ranked on <a href="/reviews">/reviews</a>.</li>
+<li><strong>Ranking needs n ≥ 5.</strong> Miners with fewer counted ratings still show on their own page, marked <span class="warn">low n</span>, and are listed under "Not ranked yet" on <a href="/reviews">/reviews</a>, but aren't ranked.</li>
 <li><strong>Delivered</strong> is the share of rated sessions where inference returned and settled (the receipt's <code>ok</code>). <strong>FLOP / useful</strong> is the median paid amount over delivered sessions, and needs at least 3.</li>
 <li><strong>Concentration warning.</strong> If one buyer gave more than 30% of a miner's ratings (with at least 10 ratings), the board shows a warning instead of hiding them.</li>
 </ul>

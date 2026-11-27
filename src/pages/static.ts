@@ -122,6 +122,8 @@ pre{background:var(--base);border:1px solid var(--line);border-radius:var(--r-md
 .official-links{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:8px 0 0}
 h3{margin:22px 0 8px;font-family:var(--mono);font-size:14px;color:var(--fg)}
 .empty-note{color:var(--muted)}
+h2 .hint{font-family:var(--sans);font-weight:400;font-size:13px;letter-spacing:0}
+#no-ratings{margin:28px 0;padding:18px;border:1px dashed var(--surface-2);border-radius:var(--r-lg);text-align:center}
 .board td.stars,.stars{color:#FFD60A}
 .preview{margin:12px 0 0;padding:12px 14px;border:1px solid var(--surface-2);border-radius:var(--r-md);background:var(--base)}
 .preview.ok{border-color:rgba(50,215,75,.4)}

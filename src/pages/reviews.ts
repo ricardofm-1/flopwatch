@@ -29,6 +29,19 @@ export function flopscanLinks(env: Env, network: string, miner: string): Raw {
     ${reliability ? html`<a href="${reliability}" rel="noopener" target="_blank">FLOPScan reliability (markets) ↗</a>` : ""}</p>`;
 }
 
+function ratingRow(env: Env, r: ReviewStatsRow): Raw {
+  return html`<tr>
+    <td data-label="Miner">${minerCell(env, r.network, r.miner)}</td>
+    <td data-label="Model"><code>${r.model}</code></td>
+    <td data-label="n" class="num">${r.n}${r.n < 5 ? html` <span class="warn" title="Fewer than 5 ratings: not meaningful yet">low n</span>` : ""}${r.buyer_concentration === "high" ? html` <span class="warn" title="One buyer gave over 30% of these ratings">1 buyer &gt;30%</span>` : ""}</td>
+    <td data-label="Rating" class="num stars"><strong>${stars(r.rating_avg)}</strong></td>
+    <td data-label="Median" class="num">${stars(r.rating_median, 1)}</td>
+    <td data-label="Delivered" class="num">${pct(r.delivery_rate)}</td>
+    <td data-label="FLOP / useful" class="num">${flopv(r.paid_flop_per_useful_median)}</td>
+    <td data-label="Last rated">${lisbon(r.last_reviewed_at)}</td>
+  </tr>`;
+}
+
 const SORTS: Record<string, keyof ReviewStatsRow> = {
   miner: "miner", model: "model", n: "n", rating: "rating_avg", median: "rating_median", rate: "delivery_rate",
   useful: "paid_flop_per_useful_median", last: "last_reviewed_at",
@@ -60,7 +73,8 @@ export async function reviewsPage(env: Env, q: URLSearchParams): Promise<string>
       const c = x < y ? -1 : 1;
       return dir === "asc" ? c : -c;
     });
-  const tooFew = inModel.filter((r) => r.n < minN);
+  // Not ranked yet: same columns, most-rated first, so every new rating is visible right away.
+  const tooFew = inModel.filter((r) => r.n < minN).sort((a, b) => b.n - a.n || (b.last_reviewed_at ?? "").localeCompare(a.last_reviewed_at ?? ""));
 
   const th = (key: string, label: string) => {
     const p = new URLSearchParams(q);
@@ -89,40 +103,34 @@ export async function reviewsPage(env: Env, q: URLSearchParams): Promise<string>
   <input type="hidden" name="sort" value="${sortKey}"><input type="hidden" name="dir" value="${dir}">
   <button type="submit">Apply</button>
 </form>
+${
+  all.length === 0
+    ? html`<p class="empty-note" id="no-ratings">No ratings yet. Ratings arrive with each verified receipt.</p>`
+    : html`<h2 id="ranked">Ranked <span class="hint">· ${minN}+ counted ratings</span></h2>
 <div class="table-wrap">
-<table class="board">
+<table class="board" id="ranked-table">
   <thead><tr>
     ${th("miner", "Miner")}${th("model", "Model")}${th("n", "n")}${th("rating", "Rating")}${th("median", "Median")}
     ${th("rate", "Delivered")}${th("useful", "FLOP / useful")}${th("last", "Last rated")}
   </tr></thead>
   <tbody>
-  ${
-    ranked.length
-      ? ranked.map(
-          (r) => html`<tr>
-    <td data-label="Miner">${minerCell(env, r.network, r.miner)}</td>
-    <td data-label="Model"><code>${r.model}</code></td>
-    <td data-label="n" class="num">${r.n}${r.buyer_concentration === "high" ? html` <span class="warn" title="One buyer gave over 30% of these ratings">1 buyer &gt;30%</span>` : ""}</td>
-    <td data-label="Rating" class="num stars"><strong>${stars(r.rating_avg)}</strong></td>
-    <td data-label="Median" class="num">${stars(r.rating_median, 1)}</td>
-    <td data-label="Delivered" class="num">${pct(r.delivery_rate)}</td>
-    <td data-label="FLOP / useful" class="num">${flopv(r.paid_flop_per_useful_median)}</td>
-    <td data-label="Last rated">${lisbon(r.last_reviewed_at)}</td>
-  </tr>`,
-        )
-      : html`<tr><td colspan="8" class="empty">No miner has ${minN}+ counted ratings in this view yet.</td></tr>`
-  }
+  ${ranked.length ? ranked.map((r) => ratingRow(env, r)) : html`<tr><td colspan="8" class="empty">No miner has ${minN}+ counted ratings in this view yet.</td></tr>`}
   </tbody>
 </table>
 </div>
 ${
   tooFew.length
-    ? html`<p class="hint">Too few ratings to rank (n &lt; ${minN}): ${tooFew.map(
-        (r, i) => html`${i ? ", " : ""}<a href="/miner/${encodeURIComponent(r.miner)}?network=${r.network}">${short(r.miner)}</a> (${r.model}, n=${r.n})`,
-      )}.</p>`
+    ? html`<h2 id="unranked">Not ranked yet <span class="hint">· fewer than ${minN} ratings, shown for transparency</span></h2>
+<div class="table-wrap">
+<table class="board" id="unranked-table">
+  <thead><tr><th scope="col">Miner</th><th scope="col">Model</th><th scope="col" class="num">n</th><th scope="col" class="num">Rating</th><th scope="col" class="num">Median</th><th scope="col" class="num">Delivered</th><th scope="col" class="num">FLOP / useful</th><th scope="col">Last rated</th></tr></thead>
+  <tbody>${tooFew.map((r) => ratingRow(env, r))}</tbody>
+</table>
+</div>`
     : ""
+}`
 }
-<p class="hint">Ratings are shrunk toward 3.0 so a handful can't dominate: (5 × 3.0 + Σ ratings) ÷ (5 + n). Only miners with ${minN}+ counted ratings are ranked. <a href="/methodology#reviews">How ratings count</a>.</p>`;
+<p class="hint">Ratings are shrunk toward 3.0 so a handful can't dominate: (5 × 3.0 + Σ ratings) ÷ (5 + n). Only miners with ${minN}+ counted ratings are ranked; the rest are listed under "Not ranked yet". <a href="/methodology#reviews">How ratings count</a>.</p>`;
 
   return layout({
     title: "Buyer ratings — Flopwatch",
