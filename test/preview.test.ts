@@ -55,4 +55,13 @@ describe("envelope preview (submit form)", () => {
     expect(r.text).toContain('id="envelope-preview"');
     expect(r.text).toContain("payload.review.rating");
   });
+
+  it("pasting and previewing work before connecting; only Submit starts disabled", async () => {
+    const r = await call("/?t=preview2");
+    expect(r.text).toContain('<textarea id="envelope" rows="10" spellcheck="false"></textarea>');
+    expect(r.text).toMatch(/<input id="envelope-file" type="file" accept="application\/json,\.json">/);
+    expect(r.text).toContain('<button type="button" id="submit" disabled>');
+    expect(SUBMIT_JS).toContain("$('submit').disabled = !(connected && valid)");
+    expect(SUBMIT_JS).not.toContain("$(id).disabled = !connected");
+  });
 });
