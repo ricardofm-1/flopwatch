@@ -122,6 +122,13 @@ describe("when a rating counts", () => {
 });
 
 describe("aggregates, feeds and pages", () => {
+  it("an empty board says so instead of showing empty tables", async () => {
+    await env.DB.prepare("DELETE FROM miner_review_stats").run();
+    const r = await call("/reviews?network=devnet&t=empty");
+    expect(r.text).toContain("No ratings yet. Ratings arrive with each verified receipt.");
+    expect(r.text).not.toContain('id="ranked-table"');
+  });
+
   it("shrinkage: a single 5 shows as 3.33; n < 5 isn't ranked; miner page shows it with low n", async () => {
     expect(shrunkMean([5], { m: 5, prior: 3 })).toBeCloseTo(20 / 6);
     const s = computeRatingStats([{ rating: 5, ok: 1, paid_flop: "0.04", submitted_at: "2026-11-26T10:00:00Z", buyer: "b" }], { m: 5, prior: 3 });
@@ -131,9 +138,15 @@ describe("aggregates, feeds and pages", () => {
     const miner = randomSs58();
     await direct(key, makePayload(key.did, { miner, review: { rating: 5, notes: "Good <b>answer</b>" } }));
     const board = await call("/reviews?network=testnet&t=agg");
-    const table = board.text.slice(board.text.indexOf('<table class="board">'), board.text.indexOf("</table>"));
-    expect(table).not.toContain(miner);
-    expect(board.text.slice(board.text.indexOf("Too few ratings to rank"))).toContain(encodeURIComponent(miner));
+    const section = (id: string) => {
+      const i = board.text.indexOf(`id="${id}"`);
+      return i < 0 ? "" : board.text.slice(i, board.text.indexOf("</table>", i));
+    };
+    expect(section("ranked-table")).not.toContain(encodeURIComponent(miner));
+    const unranked = section("unranked-table");
+    expect(unranked).toContain(encodeURIComponent(miner)); // visible right away, with its rating
+    expect(unranked).toContain("3.33 ★");
+    expect(unranked).toContain("low n");
     const page = await call(`/miner/${miner}?network=testnet&t=agg`);
     expect(page.text).toContain("Buyer ratings");
     expect(page.text).toContain("3.33 ★");
@@ -152,8 +165,8 @@ describe("aggregates, feeds and pages", () => {
     expect(row).toMatchObject({ n: 5, ranked: true, ratingMedian: 5 });
     expect(row.rating).toBeCloseTo((15 + 23.5) / 10, 2);
     const board = await call("/reviews?network=testnet&t=rank");
-    const table = board.text.slice(board.text.indexOf('<table class="board">'), board.text.indexOf("</table>"));
-    expect(table).toContain(encodeURIComponent(miner));
+    const i = board.text.indexOf('id="ranked-table"');
+    expect(board.text.slice(i, board.text.indexOf("</table>", i))).toContain(encodeURIComponent(miner));
     const home = await call("/?t=rank");
     expect(home.text).toContain('<th scope="col" class="num">Rating</th>');
     expect(home.text).toContain("3.85 ★");
