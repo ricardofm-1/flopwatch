@@ -139,10 +139,49 @@ function sameHash(hex: string, raw: Uint8Array): boolean {
   }
 }
 
+/** Official genesis hashes. An RPC that doesn't serve this exact chain is untrusted (SPEC reviews §4, §7.4). */
+export const KNOWN_GENESIS: Partial<Record<ReceiptPayload["network"], string>> = {
+  // flop.finance/testnet, checked 2026-11-26.
+  testnet: "0x918abd58fb16306b30ef3886514cfaebffecb4de43e82b6f8ec4795c43cfd800",
+};
+
+/** twox128("Timestamp") ++ twox128("Now"): identical on Devnet and Testnet metadata (checked 2026-11-27). */
+const TIMESTAMP_NOW_KEY = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb";
+
+/** Per-isolate memo of RPC URLs whose genesis matched; mismatches are re-checked every time. */
+const genesisVerified = new Set<string>();
+
+export interface SessionCheckInput {
+  network: ReceiptPayload["network"];
+  buyer: string;
+  miner: string;
+  modelHash?: string | null;
+  channelId: string;
+  settlementTx?: string | null;
+  blockNumber?: number | null;
+  maxFlop?: string | null;
+  paidFlop?: string | null;
+}
+
+export type SessionCheck =
+  | { outcome: "unavailable"; note: string }
+  | { outcome: "failed"; note: string }
+  | {
+      outcome: "found";
+      state: ChannelStateName;
+      escrowPlanck: bigint;
+      openedAtBlock: number;
+      /** Block timestamp (ms) of the channel's opened_at block, for review freshness. */
+      openedAtMs: number;
+      inclusionChecked: boolean;
+      note: string;
+    };
+
 /**
  * Lean on-chain check against a public Flop HTTP RPC.
  *
  * Checks (when the receipt supplies the data):
+ *  0. testnet only: the RPC serves the official genesis
  *  1. settlement extrinsic is included in the claimed block (needs settlementTx + blockNumber)
  *  2. computeChannel.channels(channelId) exists and matches buyer / miner / modelHash /
  *     Closed (for settled) and escrow (maxFlop)
@@ -155,10 +194,50 @@ export class RpcVerifier implements ChainVerifier {
   constructor(
     private rpcUrls: Partial<Record<ReceiptPayload["network"], string>>,
     private fetchFn: FetchFn = (i, init) => fetch(i, init),
+    private genesis: Partial<Record<ReceiptPayload["network"], string>> = KNOWN_GENESIS,
   ) {}
 
   canVerify(network: ReceiptPayload["network"]): boolean {
     return !!this.rpcUrls[network];
+  }
+
+  /** Returns null when trusted, or an "unavailable" outcome when the RPC serves a different chain. */
+  private async checkGenesis(network: ReceiptPayload["network"], url: string, signal?: AbortSignal): Promise<VerifyOutcome | null> {
+    const want = this.genesis[network];
+    if (!want || genesisVerified.has(`${network}|${url}|${want}`)) return null;
+    const got = await rpcCall<string | null>(this.fetchFn, url, "chain_getBlockHash", [0], signal);
+    if (typeof got !== "string" || got.toLowerCase() !== want.toLowerCase()) {
+      console.error(`genesis mismatch on ${network} RPC`);
+      return { outcome: "unavailable", note: `genesis_mismatch:${network}` };
+    }
+    genesisVerified.add(`${network}|${url}|${want}`);
+    return null;
+  }
+
+  private async checkInclusion(url: string, settlementTx: string, blockNumber: number, signal?: AbortSignal): Promise<VerifyOutcome | null> {
+    const blockHash = await rpcCall<string | null>(this.fetchFn, url, "chain_getBlockHash", [blockNumber], signal);
+    if (!blockHash) return { outcome: "unavailable", note: "block_not_found_yet" };
+    const block = await rpcCall<{ block: { extrinsics: string[] } } | null>(this.fetchFn, url, "chain_getBlock", [blockHash], signal);
+    if (!block) return { outcome: "unavailable", note: "block_not_found_yet" };
+    const want = settlementTx.toLowerCase();
+    if (!block.block.extrinsics.some((x) => extrinsicHash(x) === want)) return { outcome: "failed", note: "settlement_tx_not_in_block" };
+    return null;
+  }
+
+  private async loadChannel(url: string, channelId: string, signal?: AbortSignal): Promise<DecodedChannel | VerifyOutcome> {
+    let key: string;
+    try {
+      key = channelsStorageKey(channelId);
+    } catch {
+      return { outcome: "failed", note: "channel_id_not_a_32_byte_hash" };
+    }
+    const raw = await rpcCall<string | null>(this.fetchFn, url, "state_getStorage", [key], signal);
+    if (!raw) return { outcome: "failed", note: "channel_not_found" };
+    try {
+      return decodeChannel(raw);
+    } catch (e) {
+      return { outcome: "unavailable", note: `channel_decode_failed: ${(e as Error).message}` };
+    }
   }
 
   async verify(p: ReceiptPayload, signal?: AbortSignal): Promise<VerifyOutcome> {
@@ -173,15 +252,12 @@ export class RpcVerifier implements ChainVerifier {
     }
 
     try {
+      const untrusted = await this.checkGenesis(p.network, url, signal);
+      if (untrusted) return untrusted;
       const notes: string[] = [];
       if (haveInclusionInputs) {
-        const blockHash = await rpcCall<string | null>(this.fetchFn, url, "chain_getBlockHash", [p.blockNumber], signal);
-        if (!blockHash) return { outcome: "unavailable", note: "block_not_found_yet" };
-        const block = await rpcCall<{ block: { extrinsics: string[] } } | null>(this.fetchFn, url, "chain_getBlock", [blockHash], signal);
-        if (!block) return { outcome: "unavailable", note: "block_not_found_yet" };
-        const want = p.settlementTx!.toLowerCase();
-        const found = block.block.extrinsics.some((x) => extrinsicHash(x) === want);
-        if (!found) return { outcome: "failed", note: "settlement_tx_not_in_block" };
+        const inc = await this.checkInclusion(url, p.settlementTx!, p.blockNumber!, signal);
+        if (inc) return inc;
         notes.push("inclusion");
       }
 
@@ -202,22 +278,8 @@ export class RpcVerifier implements ChainVerifier {
 
   /** SPEC §11.2 — compare receipt fields to computeChannel.channels(channelId). */
   protected async matchProofFields(p: ReceiptPayload, url: string, signal?: AbortSignal): Promise<VerifyOutcome> {
-    const channelId = String(p.channelId);
-    let key: string;
-    try {
-      key = channelsStorageKey(channelId);
-    } catch {
-      return { outcome: "failed", note: "channel_id_not_a_32_byte_hash" };
-    }
-    const raw = await rpcCall<string | null>(this.fetchFn, url, "state_getStorage", [key], signal);
-    if (!raw) return { outcome: "failed", note: "channel_not_found" };
-
-    let ch: DecodedChannel;
-    try {
-      ch = decodeChannel(raw);
-    } catch (e) {
-      return { outcome: "unavailable", note: `channel_decode_failed: ${(e as Error).message}` };
-    }
+    const ch = await this.loadChannel(url, String(p.channelId), signal);
+    if ("outcome" in ch) return ch;
 
     if (!sameAccount(p.buyer, ch.agent)) return { outcome: "failed", note: "buyer_mismatch" };
     if (!sameAccount(p.miner, ch.miner)) return { outcome: "failed", note: "miner_mismatch" };
@@ -242,4 +304,65 @@ export class RpcVerifier implements ChainVerifier {
 
     return { outcome: "passed", note: `channel_fields_match:${ch.state}` };
   }
+
+  /**
+   * Review path (FLOPWATCH-BUYER-REVIEWS-SPEC §7.4): channel storage is the proof; block number is optional.
+   * Does not decide "counted": the caller applies Closed / settlementTx / caps. Never invents minerPaid.
+   */
+  async checkSession(input: SessionCheckInput, signal?: AbortSignal): Promise<SessionCheck> {
+    const url = this.rpcUrls[input.network];
+    if (!url) return { outcome: "unavailable", note: `rpc_not_configured:${input.network}` };
+    try {
+      const untrusted = await this.checkGenesis(input.network, url, signal);
+      if (untrusted) return untrusted as SessionCheck;
+      let inclusionChecked = false;
+      if (input.settlementTx && input.blockNumber != null) {
+        const inc = await this.checkInclusion(url, input.settlementTx, input.blockNumber, signal);
+        if (inc) return inc as SessionCheck;
+        inclusionChecked = true;
+      }
+      const ch = await this.loadChannel(url, input.channelId, signal);
+      if ("outcome" in ch) return ch as SessionCheck;
+      if (!sameAccount(input.buyer, ch.agent)) return { outcome: "failed", note: "buyer_mismatch" };
+      if (!sameAccount(input.miner, ch.miner)) return { outcome: "failed", note: "miner_mismatch" };
+      if (input.modelHash && !sameHash(input.modelHash, ch.modelHash)) return { outcome: "failed", note: "model_hash_mismatch" };
+      if (input.maxFlop != null) {
+        const max = flopToPlanck(input.maxFlop);
+        if (max == null) return { outcome: "failed", note: "max_flop_unparsable" };
+        if (max !== ch.escrowPlanck) return { outcome: "failed", note: "escrow_mismatch" };
+      }
+      if (input.paidFlop != null) {
+        const paid = flopToPlanck(input.paidFlop);
+        if (paid == null) return { outcome: "failed", note: "paid_flop_unparsable" };
+        if (paid > ch.escrowPlanck) return { outcome: "failed", note: "paid_exceeds_escrow" };
+      }
+      const openedHash = await rpcCall<string | null>(this.fetchFn, url, "chain_getBlockHash", [ch.openedAtBlock], signal);
+      const tsRaw = openedHash ? await rpcCall<string | null>(this.fetchFn, url, "state_getStorage", [TIMESTAMP_NOW_KEY, openedHash], signal) : null;
+      const tsBytes = tsRaw ? hexToBytes(tsRaw) : null;
+      if (!tsBytes || tsBytes.length !== 8) return { outcome: "unavailable", note: "opened_at_timestamp_unavailable" };
+      let openedAtMs = 0;
+      for (let i = 7; i >= 0; i--) openedAtMs = openedAtMs * 256 + (tsBytes[i] ?? 0);
+      return {
+        outcome: "found",
+        state: ch.state,
+        escrowPlanck: ch.escrowPlanck,
+        openedAtBlock: ch.openedAtBlock,
+        openedAtMs,
+        inclusionChecked,
+        note: `${inclusionChecked ? "inclusion; " : ""}channel_fields_match:${ch.state}`,
+      };
+    } catch (e) {
+      return { outcome: "unavailable", note: e instanceof RpcError ? e.message : "rpc_error" };
+    }
+  }
+}
+
+/** Planck (10^-18 FLOP) → exact decimal string, no floats. "42500000000000000" → "0.0425". */
+export function planckToFlop(planck: bigint | string | number, decimals = FLOP_DECIMALS): string {
+  const v = BigInt(planck);
+  if (v < 0n) throw new Error("negative amount");
+  const s = v.toString().padStart(decimals + 1, "0");
+  const whole = s.slice(0, s.length - decimals);
+  const frac = s.slice(s.length - decimals).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
 }

@@ -9,7 +9,7 @@ const SITE = { domain: "board.test", uri: "https://board.test" };
 
 describe("review fixes", () => {
   it("challenge statement names Flopwatch", async () => {
-    expect(SIWD_STATEMENT).toBe("Sign in to Flopwatch to submit miner receipts. This signature does not move funds.");
+    expect(SIWD_STATEMENT).toBe("Sign in to Flopwatch to submit miner receipts and reviews. This signature does not move funds.");
     expect((await getChallenge(uniqueIp())).statement).toBe(SIWD_STATEMENT);
   });
 

@@ -15,6 +15,8 @@ export default defineConfig(async () => {
             VERIFIER: "mock",
             ALLOW_MOCK_VERIFIER: "true",
             RATE_LIMIT_SUBMIT_HOURLY: "5",
+            // Tests exercise the SAMPLE banner path; production sets "false" in wrangler.toml.
+            SHOW_SAMPLE_DATA: "true",
           },
         },
       }),

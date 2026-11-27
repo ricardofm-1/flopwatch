@@ -11,14 +11,27 @@
  *   login                     challenge → sign → verify; prints the session token
  *   sign-receipt <file>       complete + sign a receipt payload; prints the envelope
  *   submit <file>             sign-receipt, login, POST /v1/receipts. On failure the envelope goes to ./.flop-outbox/
- *   flush                     retry everything in ./.flop-outbox/
+ *   flush                     retry everything in ./.flop-outbox/ (receipts and reviews)
+ *
+ * Buyer reviews (after a wallet-funded runDirectSession; scores are yours to give, never automatic):
+ *   review-from-session <session.json> <input.json>
+ *                             map an SDK DirectSessionResult + your scores to a review draft (stdout).
+ *                             Never copies reply / receipts[].output / sessionSeed.
+ *   sign-review <file>        complete + sign a review payload; prints the envelope
+ *   review-signing-input <envelope.json>
+ *                             print the exact JCS bytes your buyer wallet must sign (sr25519) if you
+ *                             have no /v1/bindings binding and no counted receipt for that channel
+ *   submit-review <file> [--wallet-sig <hex>]
+ *                             sign (unless already an envelope), login, POST /v1/reviews.
+ *                             409 duplicate_channel / duplicate_review = already reviewed (exit 0). Failures go to ./.flop-outbox/
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import bs58 from "bs58";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { publicKeyToDidKey } from "../src/did/didkey";
-import { jcsBytes } from "../src/receipts/jcs";
+import { jcs, jcsBytes } from "../src/receipts/jcs";
+import { reviewFromSession, type DirectSessionResultLike, type ReviewInput } from "../src/reviews/map";
 import { base64urlDecode, base64urlEncode, bytesToHex, hexToBytes, randomHex } from "../src/lib/encoding";
 
 const OUTBOX = ".flop-outbox";
@@ -100,10 +113,36 @@ function buildEnvelope(sk: Uint8Array, input: unknown) {
   return { payload, signature: signJcs(sk, payload) };
 }
 
-async function submitEnvelope(sk: Uint8Array, envelope: { payload: Record<string, unknown>; signature: string }, token?: string) {
+/** Strip anything that must never leave the machine, fill protocol fields, sign. */
+function buildReviewEnvelope(sk: Uint8Array, input: unknown) {
+  if (typeof input !== "object" || input === null) die("review must be a JSON object");
+  const src = { ...(("payload" in input ? (input as { payload: object }).payload : input) as Record<string, unknown>) };
+  for (const k of ["reply", "prompt", "output", "endpoint", "url", "mnemonic", "sessionSeed", "receipts"]) delete src[k];
+  const payload = {
+    specVersion: 1,
+    kind: "flop.miner-review",
+    ...src,
+    did: didOf(sk),
+    nonce: typeof src.nonce === "string" ? src.nonce : randomHex(16),
+    submittedAt: new Date().toISOString(),
+  };
+  return { payload, signature: signJcs(sk, payload) };
+}
+
+type Envelope = { payload: Record<string, unknown>; signature: string; walletSignature?: string };
+const isEnvelope = (x: unknown): x is Envelope =>
+  typeof x === "object" && x !== null && "payload" in x && typeof (x as Envelope).signature === "string";
+
+async function submitEnvelope(sk: Uint8Array, envelope: Envelope, token?: string) {
   const t = token ?? (await login(sk));
-  const r = await post("/v1/receipts", envelope, t);
+  const path = envelope.payload.kind === "flop.miner-review" ? "/v1/reviews" : "/v1/receipts";
+  const r = await post(path, envelope, t);
   return { ...r, token: t };
+}
+
+function flagValue(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i > 0 ? process.argv[i + 1] : undefined;
 }
 
 function saveOutbox(envelope: { payload: Record<string, unknown> }) {
@@ -162,6 +201,47 @@ switch (cmd) {
       token = r.token;
       console.log(f, r.status, JSON.stringify(r.json));
       if (r.status < 500 && r.status !== 429) unlinkSync(path); // done, or permanently rejected
+    }
+    break;
+  }
+  case "review-from-session": {
+    const session = readInput(arg) as DirectSessionResultLike & Record<string, unknown>;
+    const input = readInput(process.argv[4]) as ReviewInput;
+    try {
+      const { payload, warnings } = reviewFromSession(session, input);
+      for (const w of warnings) console.error(`warning: ${w}`);
+      console.log(JSON.stringify(payload, null, 2));
+    } catch (e) {
+      die((e as Error).message);
+    }
+    break;
+  }
+  case "sign-review":
+    console.log(JSON.stringify(buildReviewEnvelope(loadSecret(), readInput(arg)), null, 2));
+    break;
+  case "review-signing-input": {
+    const env = readInput(arg);
+    if (!isEnvelope(env)) die("pass a signed review envelope (from sign-review)");
+    process.stdout.write(jcs(env.payload));
+    break;
+  }
+  case "submit-review": {
+    const sk = loadSecret();
+    const input = readInput(arg);
+    const envelope: Envelope = isEnvelope(input) ? input : buildReviewEnvelope(sk, input);
+    if (envelope.payload.did !== didOf(sk)) die("envelope was signed by a different DID than FLOP_DID_PRIVATE_KEY");
+    const ws = flagValue("--wallet-sig");
+    if (ws) envelope.walletSignature = ws.replace(/^0x/i, "");
+    try {
+      const r = await submitEnvelope(sk, envelope);
+      console.log(r.status, JSON.stringify(r.json));
+      if (r.status === 202) console.error(`pending_verification: review ${String(r.json.id)} will be re-checked automatically`);
+      // Already reviewed (this exact envelope, or another review of the same session): success.
+      if (r.status === 409 && (r.json.error === "duplicate_channel" || r.json.error === "duplicate_review")) break;
+      if (r.status >= 500 || r.status === 429) die(`kept for retry: ${saveOutbox(envelope)}`);
+      if (r.status >= 400) process.exit(1);
+    } catch (e) {
+      die(`${(e as Error).message}; kept for retry: ${saveOutbox(envelope)}`);
     }
     break;
   }

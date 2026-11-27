@@ -31,6 +31,10 @@ EXPLORER_TX_URL_DEVNET = "https://explorer.devnet.flop.network/transactions/{has
 EXPLORER_TX_URL_TESTNET = "https://testnet.flopscan.io/transactions/{hash}"
 EXPLORER_ACCOUNT_URL_DEVNET = "https://explorer.devnet.flop.network/account/{address}"
 EXPLORER_ACCOUNT_URL_TESTNET = "https://testnet.flopscan.io/account/{address}"
+# Official FLOPScan markets surface (FRCR, curve, readiness, reliability). Linked, never re-hosted.
+FLOPSCAN_MARKETS_URL_TESTNET = "https://testnet.flopscan.io/markets?tab=reliability"
+# Leave empty until a per-miner reliability path is published and returns 200. {address} placeholder.
+FLOPSCAN_MINER_RELIABILITY_URL_TESTNET = ""
 CHALLENGE_TTL_SECONDS = "300"
 SESSION_TTL_SECONDS = "1800"
 RATE_LIMIT_SUBMIT_HOURLY = "30"
@@ -38,6 +42,15 @@ RATE_LIMIT_SUBMIT_DAILY = "200"
 RATE_LIMIT_CHALLENGE_HOURLY = "60"
 VERIFY_INLINE_TIMEOUT_MS = "2500"
 VERIFY_MAX_ATTEMPTS = "12"
+# "false" hides the seeded SAMPLE rows (they stay in D1) and shows the real, possibly empty, live board.
+SHOW_SAMPLE_DATA = "false"
+# Buyer reviews (FLOPWATCH-BUYER-REVIEWS-SPEC §12)
+REVIEW_MAX_PER_DID_DAILY = "20"
+REVIEW_MAX_PER_BUYER_7D = "10"
+REVIEW_FRESHNESS_DAYS = "30"
+REVIEW_MIN_N = "5"
+REVIEW_BAYES_M = "5"
+REVIEW_BAYES_PRIOR = "3"
 # Secret (wrangler secret put): SESSION_SIGNING_KEY
 
 [[d1_databases]]

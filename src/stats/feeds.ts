@@ -1,6 +1,7 @@
 import type { Env, Network } from "../env";
 import { explorerLink, networkConfig, NETWORKS } from "../env";
-import { ensureStatsFresh, getMeta, hasLiveCounted, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
+import { minerReviews, reviewCounts, reviewSnapshotNdjson } from "../reviews/feeds";
+import { ensureStatsFresh, getMeta, hasLiveCounted, samplesEnabled, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
 
 export const SCHEMA_VERSION = 1;
 
@@ -61,7 +62,10 @@ function toFeedRow(env: Env, r: StatsRow): MinerFeedRow {
 
 export async function buildMeta(env: Env) {
   await ensureStatsFresh(env);
-  const live = await hasLiveCounted(env);
+  // `live` drives the banner and hides sample rows: true once a real counted testnet receipt exists,
+  // or when sample data is switched off. countedLiveReceipts always reports the real count.
+  const hasLive = await hasLiveCounted(env);
+  const live = hasLive || !samplesEnabled(env);
   const counts = await env.DB.prepare(
     `SELECT
        SUM(CASE WHEN counted = 1 AND is_sample = 0 AND verified_by IS NOT NULL AND verified_by != 'mock' THEN 1 ELSE 0 END) AS counted_live,
@@ -78,8 +82,10 @@ export async function buildMeta(env: Env) {
     windows: WINDOWS,
     statsBuiltAt: await getMeta(env, "stats_built_at"),
     countedLiveReceipts: counts?.counted_live ?? 0,
+    sampleDataShown: !live,
     sampleReceipts: counts?.sample_rows ?? 0,
     pendingVerification: counts?.pending ?? 0,
+    ...(await reviewCounts(env)),
     site: "Flopwatch",
     notice: "Observed, verified receipts. Independent; not an official FLOP Network ranking.",
   };
@@ -157,7 +163,11 @@ export async function buildMinerFeed(
     .bind(miner, opts.network ?? null, meta.live ? 1 : 0, Math.min(opts.limit ?? 200, 500))
     .all<Record<string, unknown>>(),
   ]);
-  if (stats.results.length === 0 && receipts.results.length === 0) return null;
+  if (stats.results.length === 0 && receipts.results.length === 0) {
+    // A miner can have reviews without receipts.
+    const any = await env.DB.prepare("SELECT 1 AS x FROM reviews WHERE miner = ? AND counted = 1 LIMIT 1").bind(miner).first();
+    if (!any) return null;
+  }
   return {
     schemaVersion: SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -165,6 +175,7 @@ export async function buildMinerFeed(
     miner,
     stats: stats.results.map((r) => toFeedRow(env, r)),
     receipts: receipts.results.map((r) => publicReceipt(env, r)),
+    reviews: await minerReviews(env, miner, opts.network),
   };
 }
 
@@ -189,6 +200,7 @@ export async function writeSnapshot(env: Env, now = new Date()): Promise<string>
   await Promise.all([
     env.BUCKET.put(`snapshots/${day}/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`snapshots/${day}/receipts.ndjson`, ndjson, { httpMetadata: { contentType: "application/x-ndjson" } }),
+    env.BUCKET.put(`snapshots/${day}/reviews.ndjson`, await reviewSnapshotNdjson(env, since), { httpMetadata: { contentType: "application/x-ndjson" } }),
     env.BUCKET.put(`data/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`data/index.json`, JSON.stringify({ ...meta, latestSnapshot: `snapshots/${day}/`, generatedAt: now.toISOString() }), json),
     env.BUCKET.put(`data/meta.json`, JSON.stringify({ ...meta, generatedAt: now.toISOString() }), json),

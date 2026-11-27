@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { intVar } from "../env";
 import { getVerifier, type VerifyOutcome } from "../verify";
 import type { ReceiptPayload } from "./schema";
-import { hasLiveCounted, recomputeAll, recomputeGroup, setMeta } from "../stats/aggregate";
+import { hasLiveCounted, recomputeAll, recomputeGroup, setMeta, showingSamples } from "../stats/aggregate";
 
 export interface ReceiptState {
   id: string;
@@ -13,7 +13,7 @@ export interface ReceiptState {
 }
 
 /** Self-dealing rules (SPEC §4). Returns an exclusion reason or null. */
-export async function selfDealingReason(env: Env, p: ReceiptPayload): Promise<string | null> {
+export async function selfDealingReason(env: Env, p: Pick<ReceiptPayload, "did" | "buyer" | "miner" | "network">): Promise<string | null> {
   if (p.buyer === p.miner) return "self_dealing:buyer_is_miner";
   const r = await env.DB.prepare(
     `SELECT
@@ -28,7 +28,7 @@ export async function selfDealingReason(env: Env, p: ReceiptPayload): Promise<st
   return null;
 }
 
-async function withTimeout(p: Promise<VerifyOutcome>, ms: number, ctrl: AbortController): Promise<VerifyOutcome> {
+export async function withTimeout<T>(p: Promise<T>, ms: number, ctrl: AbortController): Promise<T | VerifyOutcome> {
   let t: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<VerifyOutcome>((resolve) => {
     t = setTimeout(() => {
@@ -57,7 +57,7 @@ export async function runVerification(
   const verifier = getVerifier(env);
   const ctrl = new AbortController();
   const ms = mode === "inline" ? intVar(env.VERIFY_INLINE_TIMEOUT_MS, 2500) : 20_000;
-  const res = await withTimeout(verifier.verify(payload, ctrl.signal), ms, ctrl);
+  const res = (await withTimeout(verifier.verify(payload, ctrl.signal), ms, ctrl)) as VerifyOutcome;
   const now = Date.now();
 
   if (res.outcome === "unavailable") {
@@ -85,7 +85,7 @@ export async function runVerification(
       // First real counted testnet receipt: drop SAMPLE rows from all aggregates.
       await recomputeAll(env);
     } else {
-      await recomputeGroup(env, payload, !(await hasLiveCounted(env)));
+      await recomputeGroup(env, payload, await showingSamples(env));
       await setMeta(env, "stats_built_at", new Date(now).toISOString());
     }
   }
