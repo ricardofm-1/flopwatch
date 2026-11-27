@@ -1,4 +1,5 @@
 import type { Env, Network } from "../env";
+import { recomputeAllReviews } from "../reviews/aggregate";
 
 export const WINDOWS = ["7d", "30d", "all"] as const;
 export type StatsWindow = (typeof WINDOWS)[number];
@@ -170,6 +171,7 @@ export async function recomputeAll(env: Env, now = Date.now()): Promise<number> 
     .all<{ network: string; miner: string; model: string }>();
   await env.DB.prepare("DELETE FROM miner_stats").run();
   for (const g of results) await recomputeGroup(env, g, includeSamples, now);
+  await recomputeAllReviews(env, includeSamples, now);
   await setMeta(env, "stats_built_at", new Date(now).toISOString());
   await env.DB.prepare("DELETE FROM meta WHERE key = 'stats_dirty'").run();
   return results.length;

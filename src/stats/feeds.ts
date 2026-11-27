@@ -1,6 +1,6 @@
 import type { Env, Network } from "../env";
 import { explorerLink, networkConfig, NETWORKS } from "../env";
-import { minerReviews, reviewCounts, reviewSnapshotNdjson } from "../reviews/feeds";
+import { minerReviews, reviewCounts } from "../reviews/feeds";
 import { ensureStatsFresh, getMeta, hasLiveCounted, samplesEnabled, roundFlop, roundMs, roundRate, WINDOWS, type StatsWindow } from "./aggregate";
 
 export const SCHEMA_VERSION = 1;
@@ -136,12 +136,13 @@ export function publicReceipt(env: Env, r: Record<string, unknown>) {
     counted: r.counted === 1,
     excludedReason: r.excluded_reason ?? null,
     sample: r.is_sample === 1,
+    review: r.rating == null ? null : { rating: r.rating, notes: r.review_notes ?? null, excludedReason: r.review_excluded ?? null },
   };
 }
 
 const RECEIPT_COLS = `id, network, miner, model, model_hash, status, ok, latency_ms, max_flop, paid_flop, prompt_tokens,
   completion_tokens, error_class, started_at, finished_at, channel_id, settlement_tx, block_number, verification,
-  verification_note, counted, excluded_reason, is_sample`;
+  verification_note, counted, excluded_reason, is_sample, rating, review_notes, review_excluded`;
 
 export async function buildMinerFeed(
   env: Env,
@@ -163,11 +164,7 @@ export async function buildMinerFeed(
     .bind(miner, opts.network ?? null, meta.live ? 1 : 0, Math.min(opts.limit ?? 200, 500))
     .all<Record<string, unknown>>(),
   ]);
-  if (stats.results.length === 0 && receipts.results.length === 0) {
-    // A miner can have reviews without receipts.
-    const any = await env.DB.prepare("SELECT 1 AS x FROM reviews WHERE miner = ? AND counted = 1 LIMIT 1").bind(miner).first();
-    if (!any) return null;
-  }
+  if (stats.results.length === 0 && receipts.results.length === 0) return null;
   return {
     schemaVersion: SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -175,7 +172,7 @@ export async function buildMinerFeed(
     miner,
     stats: stats.results.map((r) => toFeedRow(env, r)),
     receipts: receipts.results.map((r) => publicReceipt(env, r)),
-    reviews: await minerReviews(env, miner, opts.network),
+    reviews: await minerReviews(env, miner, opts.network, meta.live),
   };
 }
 
@@ -200,7 +197,6 @@ export async function writeSnapshot(env: Env, now = new Date()): Promise<string>
   await Promise.all([
     env.BUCKET.put(`snapshots/${day}/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`snapshots/${day}/receipts.ndjson`, ndjson, { httpMetadata: { contentType: "application/x-ndjson" } }),
-    env.BUCKET.put(`snapshots/${day}/reviews.ndjson`, await reviewSnapshotNdjson(env, since), { httpMetadata: { contentType: "application/x-ndjson" } }),
     env.BUCKET.put(`data/miners.json`, JSON.stringify(miners), json),
     env.BUCKET.put(`data/index.json`, JSON.stringify({ ...meta, latestSnapshot: `snapshots/${day}/`, generatedAt: now.toISOString() }), json),
     env.BUCKET.put(`data/meta.json`, JSON.stringify({ ...meta, generatedAt: now.toISOString() }), json),

@@ -6,7 +6,7 @@ describe("pages", () => {
     const r = await call("/");
     expect(r.status).toBe(200);
     expect(r.text).toContain('<details class="submit-panel" id="submit-panel">');
-    expect(r.text).toContain("<summary>Submit a signed receipt</summary>");
+    expect(r.text).toContain("<summary>Submit a signed receipt + rating</summary>");
     expect(r.text).toContain('id="submit-auth-note"');
     expect(r.text).toContain('id="nav-connect"');
     expect(r.text).toMatch(/\/static\/app\.js\?v=\w+[\s\S]*\/static\/submit\.js\?v=\w+/);

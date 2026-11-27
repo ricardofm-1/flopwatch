@@ -35,12 +35,29 @@ export interface ReceiptPayload {
   promptHash: string;
   outputHash?: string | null;
   endpointHash?: string | null;
+  /** Mandatory buyer review, signed with the receipt. */
+  review: ReceiptReview;
+}
+
+export interface ReceiptReview {
+  /** Overall rating, 1–5 stars in 0.5 steps. */
+  rating: number;
+  /** Optional short plain text, ≤ 500 chars. */
+  notes?: string | null;
+}
+
+export const REVIEW_NOTES_MAX = 500;
+
+/** 1, 1.5, …, 5. */
+export function isValidRating(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 5 && Number.isInteger(v * 2);
 }
 
 const ALLOWED = new Set([
   "specVersion", "kind", "network", "did", "submittedAt", "nonce", "buyer", "miner", "model", "modelHash",
   "channelId", "status", "ok", "settlementTx", "blockNumber", "maxFlop", "paidFlop", "promptTokens",
   "completionTokens", "latencyMs", "startedAt", "finishedAt", "errorClass", "promptHash", "outputHash", "endpointHash",
+  "review",
 ]);
 /** Fields the kit might carry that must never be submitted (SPEC §4 privacy, §7 agent auto-submit). */
 const FORBIDDEN_HINT: Record<string, string> = {
@@ -116,6 +133,21 @@ export function validateReceiptPayload(p: unknown): ValidationResult {
   if (typeof p.promptHash !== "string" || !SHA256_TAGGED.test(p.promptHash)) errors.push("promptHash must be 'sha256:' + 64 hex");
   for (const k of ["outputHash", "endpointHash"]) {
     if (!opt(k) && (typeof p[k] !== "string" || !SHA256_TAGGED.test(p[k] as string))) errors.push(`${k} must be 'sha256:' + 64 hex`);
+  }
+  const review = p.review;
+  if (!isPlainObject(review)) {
+    errors.push("review is required: { rating: 1–5 in 0.5 steps, notes?: string }");
+  } else {
+    for (const k of Object.keys(review)) if (k !== "rating" && k !== "notes") errors.push(`unknown review field '${k}'`);
+    if (!isValidRating(review.rating)) errors.push("review.rating must be 1–5 in 0.5 steps (1, 1.5, … 5)");
+    if (review.notes !== undefined && review.notes !== null) {
+      if (typeof review.notes !== "string") errors.push("review.notes must be a string");
+      else {
+        if (review.notes.trim().length > REVIEW_NOTES_MAX) errors.push(`review.notes must be at most ${REVIEW_NOTES_MAX} characters`);
+        // eslint-disable-next-line no-control-regex
+        if (/[\u0000-\u0009\u000b-\u001f\u007f]/.test(review.notes.trim())) errors.push("review.notes may not contain control characters (newlines are fine)");
+      }
+    }
   }
   if (errors.length) return { ok: false, errors };
   return { ok: true, errors, payload: p as unknown as ReceiptPayload };

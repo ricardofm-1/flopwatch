@@ -91,6 +91,7 @@ export function makePayload(did: string, over: Record<string, unknown> = {}) {
     startedAt: new Date(now - 5_000).toISOString(),
     finishedAt: new Date(now - 4_000).toISOString(),
     promptHash: `sha256:${bytesToHex(new Uint8Array(32).fill(7))}`,
+    review: { rating: 4 },
     ...over,
   };
 }

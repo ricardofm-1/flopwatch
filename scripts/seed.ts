@@ -50,13 +50,15 @@ for (const m of miners) {
     const ct = 100 + Math.floor(rand() * 300);
     const paid = ok ? (m.price * (0.8 + rand() * 0.4)).toFixed(6) : null;
     const id = `sample-${hex(16)}`;
+    // Mandatory buyer rating (1–5, 0.5 steps), loosely tracking the miner's reliability.
+    const rating = Math.min(5, Math.max(1, Math.round((ok ? 3 + m.reliability * 2 * rand() + 0.4 : 1 + rand() * 1.5) * 2) / 2));
     rows.push(
       `(${[
         id, "testnet", "did:key:SAMPLE-NOT-LIVE", addr(), m.addr, m.model, `ch-sample-${hex(4)}`,
         ok ? `0x${hex(32)}` : null, ok ? 100000 + Math.floor(rand() * 50000) : null, status, ok ? 1 : 0, "0.01", paid,
         ok ? pt : null, ok ? ct : null, latency, ok ? null : status === "timeout" ? "timeout" : "miner-unreachable",
         started.toISOString(), finished.toISOString(), finished.toISOString(), hex(16), "{}", "SAMPLE", now,
-        "passed", "sample", "SAMPLE — NOT LIVE DATA", 1, 1,
+        "passed", "sample", "SAMPLE — NOT LIVE DATA", 1, 1, rating,
       ].map(q).join(", ")})`,
     );
   }
@@ -64,7 +66,7 @@ for (const m of miners) {
 
 const cols = `id, network, did, buyer, miner, model, channel_id, settlement_tx, block_number, status, ok, max_flop, paid_flop,
   prompt_tokens, completion_tokens, latency_ms, error_class, started_at, finished_at, submitted_at, nonce, payload_json,
-  signature, received_at, verification, verified_by, verification_note, counted, is_sample`;
+  signature, received_at, verification, verified_by, verification_note, counted, is_sample, rating`;
 
 const sql = args.has("--clear")
   ? "DELETE FROM receipts WHERE is_sample = 1;\nINSERT OR REPLACE INTO meta (key, value) VALUES ('stats_dirty', '1');\n"

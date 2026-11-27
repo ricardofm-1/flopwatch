@@ -145,43 +145,14 @@ export const KNOWN_GENESIS: Partial<Record<ReceiptPayload["network"], string>> =
   testnet: "0x918abd58fb16306b30ef3886514cfaebffecb4de43e82b6f8ec4795c43cfd800",
 };
 
-/** twox128("Timestamp") ++ twox128("Now"): identical on Devnet and Testnet metadata (checked 2026-11-27). */
-const TIMESTAMP_NOW_KEY = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb";
-
 /** Per-isolate memo of RPC URLs whose genesis matched; mismatches are re-checked every time. */
 const genesisVerified = new Set<string>();
-
-export interface SessionCheckInput {
-  network: ReceiptPayload["network"];
-  buyer: string;
-  miner: string;
-  modelHash?: string | null;
-  channelId: string;
-  settlementTx?: string | null;
-  blockNumber?: number | null;
-  maxFlop?: string | null;
-  paidFlop?: string | null;
-}
-
-export type SessionCheck =
-  | { outcome: "unavailable"; note: string }
-  | { outcome: "failed"; note: string }
-  | {
-      outcome: "found";
-      state: ChannelStateName;
-      escrowPlanck: bigint;
-      openedAtBlock: number;
-      /** Block timestamp (ms) of the channel's opened_at block, for review freshness. */
-      openedAtMs: number;
-      inclusionChecked: boolean;
-      note: string;
-    };
 
 /**
  * Lean on-chain check against a public Flop HTTP RPC.
  *
  * Checks (when the receipt supplies the data):
- *  0. testnet only: the RPC serves the official genesis
+ *  0. testnet only: the RPC serves the official genesis (KNOWN_GENESIS)
  *  1. settlement extrinsic is included in the claimed block (needs settlementTx + blockNumber)
  *  2. computeChannel.channels(channelId) exists and matches buyer / miner / modelHash /
  *     Closed (for settled) and escrow (maxFlop)
@@ -305,64 +276,4 @@ export class RpcVerifier implements ChainVerifier {
     return { outcome: "passed", note: `channel_fields_match:${ch.state}` };
   }
 
-  /**
-   * Review path (FLOPWATCH-BUYER-REVIEWS-SPEC §7.4): channel storage is the proof; block number is optional.
-   * Does not decide "counted": the caller applies Closed / settlementTx / caps. Never invents minerPaid.
-   */
-  async checkSession(input: SessionCheckInput, signal?: AbortSignal): Promise<SessionCheck> {
-    const url = this.rpcUrls[input.network];
-    if (!url) return { outcome: "unavailable", note: `rpc_not_configured:${input.network}` };
-    try {
-      const untrusted = await this.checkGenesis(input.network, url, signal);
-      if (untrusted) return untrusted as SessionCheck;
-      let inclusionChecked = false;
-      if (input.settlementTx && input.blockNumber != null) {
-        const inc = await this.checkInclusion(url, input.settlementTx, input.blockNumber, signal);
-        if (inc) return inc as SessionCheck;
-        inclusionChecked = true;
-      }
-      const ch = await this.loadChannel(url, input.channelId, signal);
-      if ("outcome" in ch) return ch as SessionCheck;
-      if (!sameAccount(input.buyer, ch.agent)) return { outcome: "failed", note: "buyer_mismatch" };
-      if (!sameAccount(input.miner, ch.miner)) return { outcome: "failed", note: "miner_mismatch" };
-      if (input.modelHash && !sameHash(input.modelHash, ch.modelHash)) return { outcome: "failed", note: "model_hash_mismatch" };
-      if (input.maxFlop != null) {
-        const max = flopToPlanck(input.maxFlop);
-        if (max == null) return { outcome: "failed", note: "max_flop_unparsable" };
-        if (max !== ch.escrowPlanck) return { outcome: "failed", note: "escrow_mismatch" };
-      }
-      if (input.paidFlop != null) {
-        const paid = flopToPlanck(input.paidFlop);
-        if (paid == null) return { outcome: "failed", note: "paid_flop_unparsable" };
-        if (paid > ch.escrowPlanck) return { outcome: "failed", note: "paid_exceeds_escrow" };
-      }
-      const openedHash = await rpcCall<string | null>(this.fetchFn, url, "chain_getBlockHash", [ch.openedAtBlock], signal);
-      const tsRaw = openedHash ? await rpcCall<string | null>(this.fetchFn, url, "state_getStorage", [TIMESTAMP_NOW_KEY, openedHash], signal) : null;
-      const tsBytes = tsRaw ? hexToBytes(tsRaw) : null;
-      if (!tsBytes || tsBytes.length !== 8) return { outcome: "unavailable", note: "opened_at_timestamp_unavailable" };
-      let openedAtMs = 0;
-      for (let i = 7; i >= 0; i--) openedAtMs = openedAtMs * 256 + (tsBytes[i] ?? 0);
-      return {
-        outcome: "found",
-        state: ch.state,
-        escrowPlanck: ch.escrowPlanck,
-        openedAtBlock: ch.openedAtBlock,
-        openedAtMs,
-        inclusionChecked,
-        note: `${inclusionChecked ? "inclusion; " : ""}channel_fields_match:${ch.state}`,
-      };
-    } catch (e) {
-      return { outcome: "unavailable", note: e instanceof RpcError ? e.message : "rpc_error" };
-    }
-  }
-}
-
-/** Planck (10^-18 FLOP) → exact decimal string, no floats. "42500000000000000" → "0.0425". */
-export function planckToFlop(planck: bigint | string | number, decimals = FLOP_DECIMALS): string {
-  const v = BigInt(planck);
-  if (v < 0n) throw new Error("negative amount");
-  const s = v.toString().padStart(decimals + 1, "0");
-  const whole = s.slice(0, s.length - decimals);
-  const frac = s.slice(s.length - decimals).replace(/0+$/, "");
-  return frac ? `${whole}.${frac}` : whole;
 }
