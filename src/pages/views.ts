@@ -47,9 +47,11 @@ function submitCard(opts: { id: string; title?: Raw; authNote: boolean }): Raw {
   return html`<section class="card" id="${opts.id}">
 ${opts.title ? html`<h2>${opts.title}</h2>` : ""}
 ${opts.authNote ? html`<p id="submit-auth-note" class="hint">You need to <a href="/connect">connect your DID</a> before submitting.</p>` : ""}
+<p class="hint">Paste the envelope your agent signed. The 1–5 star rating is <em>inside</em> it (<code>payload.review.rating</code>), set when signing, e.g. <code>agent-cli sign-receipt receipt.json --rating 4.5</code>. It can't be added here: changing the signed payload would invalidate the signature.</p>
 <label for="envelope">Envelope JSON <code>{ "payload": {…, "review": { "rating": 4.5 } }, "signature": "…" }</code></label>
 <textarea id="envelope" rows="10" spellcheck="false" disabled></textarea>
 <label for="envelope-file">…or upload a file</label><input id="envelope-file" type="file" accept="application/json,.json" disabled>
+<div id="envelope-preview" class="preview" aria-live="polite" hidden></div>
 <button type="button" id="submit" disabled>Submit receipt</button>
 <pre id="submit-result" class="result" role="status"></pre>
 </section>`;

@@ -123,6 +123,17 @@ pre{background:var(--base);border:1px solid var(--line);border-radius:var(--r-md
 h3{margin:22px 0 8px;font-family:var(--mono);font-size:14px;color:var(--fg)}
 .empty-note{color:var(--muted)}
 .board td.stars,.stars{color:#FFD60A}
+.preview{margin:12px 0 0;padding:12px 14px;border:1px solid var(--surface-2);border-radius:var(--r-md);background:var(--base)}
+.preview.ok{border-color:rgba(50,215,75,.4)}
+.preview.bad{border-color:rgba(255,69,58,.5)}
+.preview p{margin:0 0 8px}
+.preview-error{color:var(--bad);font-size:14px}
+.preview-rating{font-family:var(--mono);font-size:15px;color:var(--fg)}
+.preview-stars{color:#FFD60A;letter-spacing:2px;font-size:18px}
+.preview-notes{color:#D3D7DD;font-style:italic;white-space:pre-wrap}
+.preview dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0;font-size:13px}
+.preview dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:2px}
+.preview dd{margin:0;font-family:var(--mono);color:var(--fg);word-break:break-all}
 .board td.stars a{color:#FFD60A}
 .board td.notes{white-space:pre-wrap;min-width:16rem;max-width:32rem;color:#D3D7DD}
 .connected-as{margin:0;color:var(--ok);font-family:var(--mono);font-weight:700;word-break:break-all}
@@ -241,24 +252,101 @@ export const CONNECT_JS = `
 
 export const SUBMIT_JS = `
 (function () {
+  // Pure: what does this pasted envelope contain? Mirrors the server's checks so problems show before submitting.
+  // The page never edits the envelope: the rating is inside the signed payload, so changing it would break the signature.
+  function describeEnvelope(text) {
+    var out = { ok: false, error: null, fields: [], rating: null, notes: null };
+    if (!text || !text.trim()) { out.error = null; return out; }
+    var env;
+    try { env = JSON.parse(text); } catch (_) { out.error = 'Not valid JSON.'; return out; }
+    if (!env || typeof env !== 'object' || Array.isArray(env)) { out.error = 'Expected an object: { "payload": {…}, "signature": "…" }.'; return out; }
+    var p = env.payload;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) { out.error = 'Missing "payload": paste the whole signed envelope, not just the receipt.'; return out; }
+    if (typeof env.signature !== 'string' || !env.signature) { out.error = 'Missing "signature": sign it first, e.g. agent-cli sign-receipt receipt.json --rating 4.5'; return out; }
+    if (p.kind !== 'flop.miner-receipt') { out.error = 'payload.kind must be "flop.miner-receipt".'; return out; }
+    var short = function (a) { a = String(a || ''); return a.length > 14 ? a.slice(0, 6) + '…' + a.slice(-6) : a; };
+    out.fields = [
+      ['Network', p.network], ['Miner', short(p.miner)], ['Model', p.model],
+      ['Session', String(p.status) + (p.ok === true ? ' · delivered' : p.ok === false ? ' · not delivered' : '')],
+      ['Latency', typeof p.latencyMs === 'number' ? (p.latencyMs >= 10000 ? (p.latencyMs / 1000).toFixed(1) + ' s' : Math.round(p.latencyMs) + ' ms') : '—'],
+      ['Paid', p.paidFlop != null ? p.paidFlop + ' FLOP' : 'n/a'],
+      ['Signed by', short(p.did)]
+    ];
+    var rv = p.review;
+    if (!rv || typeof rv !== 'object' || Array.isArray(rv)) { out.error = 'No rating in this receipt. Every receipt needs "review": { "rating": 1–5 }. Re-sign it with --rating.'; return out; }
+    var r = rv.rating;
+    if (typeof r !== 'number' || !isFinite(r) || r < 1 || r > 5 || Math.round(r * 2) !== r * 2) {
+      out.error = 'review.rating must be 1–5 in half steps (1, 1.5, … 5); found ' + JSON.stringify(r) + '. Re-sign it with a valid --rating.';
+      return out;
+    }
+    if (rv.notes != null && (typeof rv.notes !== 'string' || rv.notes.trim().length > 500)) { out.error = 'review.notes must be text of at most 500 characters.'; return out; }
+    out.rating = r;
+    out.notes = rv.notes ? rv.notes.trim() : null;
+    out.ok = true;
+    return out;
+  }
+  window.flopDescribeEnvelope = describeEnvelope;
+
   var $ = function (id) { return document.getElementById(id); };
   if (!$('submit')) return;
+  var connected = false;
+  var valid = false;
+
+  function starsText(r) {
+    var full = Math.floor(r), half = r - full >= 0.5;
+    return '★★★★★'.slice(0, full) + (half ? '½' : '') + '☆☆☆☆☆'.slice(0, 5 - full - (half ? 1 : 0));
+  }
+  function render() {
+    var box = $('envelope-preview');
+    var d = describeEnvelope($('envelope').value);
+    valid = d.ok;
+    $('submit').disabled = !(connected && valid);
+    if (!box) return;
+    box.textContent = '';
+    box.className = 'preview' + (d.ok ? ' ok' : d.error ? ' bad' : '');
+    box.hidden = !d.ok && !d.error;
+    if (d.error) {
+      var e = document.createElement('p'); e.className = 'preview-error'; e.textContent = d.error; box.appendChild(e);
+    }
+    if (d.ok) {
+      var head = document.createElement('p'); head.className = 'preview-rating';
+      var s = document.createElement('span'); s.className = 'preview-stars'; s.setAttribute('aria-hidden', 'true'); s.textContent = starsText(d.rating);
+      var n = document.createElement('strong'); n.textContent = ' ' + d.rating + ' / 5';
+      head.appendChild(s); head.appendChild(n);
+      box.appendChild(head);
+      if (d.notes) { var q = document.createElement('p'); q.className = 'preview-notes'; q.textContent = '“' + d.notes + '”'; box.appendChild(q); }
+    }
+    if (d.fields.length) {
+      var dl = document.createElement('dl');
+      d.fields.forEach(function (f) {
+        var dt = document.createElement('dt'); dt.textContent = f[0];
+        var dd = document.createElement('dd'); dd.textContent = f[1] == null ? '—' : String(f[1]);
+        dl.appendChild(dt); dl.appendChild(dd);
+      });
+      box.appendChild(dl);
+    }
+  }
+
   window.flopOnSession(function (did) {
-    var on = !!did;
-    ['envelope', 'envelope-file', 'submit'].forEach(function (id) { $(id).disabled = !on; });
-    var note = $('submit-auth-note'); if (note) note.hidden = on;
-    if (!on) $('submit-result').textContent = '';
+    connected = !!did;
+    ['envelope', 'envelope-file'].forEach(function (id) { $(id).disabled = !connected; });
+    var note = $('submit-auth-note'); if (note) note.hidden = connected;
+    if (!connected) $('submit-result').textContent = '';
+    render();
   });
+  $('envelope').addEventListener('input', render);
   $('envelope-file').addEventListener('change', async function (e) {
-    var f = e.target.files && e.target.files[0]; if (f) $('envelope').value = await f.text();
+    var f = e.target.files && e.target.files[0]; if (f) { $('envelope').value = await f.text(); render(); }
   });
   $('submit').addEventListener('click', async function () {
-    var env; try { env = JSON.parse($('envelope').value); } catch (_) { $('submit-result').textContent = 'Envelope is not valid JSON.'; return; }
+    if (!valid) return;
+    var env = JSON.parse($('envelope').value);
     var endpoint = $('submit').getAttribute('data-endpoint') || '/v1/receipts';
     var r = await fetch(endpoint, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(env) });
     var j = await r.json().catch(function () { return {}; });
     $('submit-result').textContent = r.status + ' ' + JSON.stringify(j, null, 2);
   });
+  render();
 })();
 `;
 
