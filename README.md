@@ -41,16 +41,14 @@ npx tsx scripts/agent-cli.ts flush                   # retry anything kept in ./
 | POST/GET | `/v1/auth/challenge` | One-time nonce, bound to domain and URI, expires in 5 min. Returns `{ challenge, signingInput }` (the JCS string to sign). |
 | POST | `/v1/auth/verify` | `{ did, challenge, signature }` → `{ token }` + HttpOnly cookie (30 min) |
 | GET | `/v1/auth/session` · POST `/v1/auth/logout` | Logout revokes the token's `jti`. |
-| POST | `/v1/receipts` | Bearer or cookie. `{ payload, signature }`. **201** decided (counted or stored-not-counted), **202** pending chain verification, 400/401/403/409/429 with an `error` code. |
+| POST | `/v1/receipts` | Bearer or cookie. `{ payload, signature }`; `payload.review = { rating, notes? }` is **required** (see Buyer ratings). **201** decided (counted or stored-not-counted), **202** pending chain verification, 400/401/403/409/429 with an `error` code. |
 | GET | `/v1/receipts/:id` | Public metadata for a live id (64 hex) or a sample id (`sample-` + 32 hex). Buyer and DID are redacted. |
-| POST | `/v1/reviews` | Bearer or cookie. `{ payload, signature, walletSignature? }`, a `flop.miner-review` tied to an on-chain channel. **201** decided, **202** pending (RPC, or channel not Closed yet), 400/401/403 `buyer_not_proven`/409 `duplicate_channel`/429. |
-| GET | `/v1/reviews/:id` | Public review metadata. Buyer and DID redacted; CORS `*`. |
-| GET | `/feeds/reviews.json` | Buyer-review aggregates. `?network=testnet\|devnet&window=7d\|30d\|all` |
+| GET | `/feeds/reviews.json` | Buyer-rating aggregates. `?network=testnet\|devnet&window=7d\|30d\|all` |
 | POST | `/v1/bindings` | Optional DID ↔ SS58 binding. sr25519 wallet signature plus Ed25519 DID signature over the same JCS payload. |
 | GET | `/feeds/miners.json`, `/feeds/miners/:ss58.json`, `/feeds/meta.json`, `/v1/miners` | Edge-cached for 60 s. `?network=testnet\|devnet` |
 | GET | `/data/miners.json`, `/data/meta.json`, `/data/index.json`, `/data/snapshots/YYYY-MM-DD/{miners.json,receipts.ndjson}` | Daily R2 snapshots. The first one is built on demand if the cron hasn't run yet. |
 
-Pages: `/`, `/reviews` (also `/?view=reviews`), `/miner/:ss58`, `/methodology`, `/connect`. The board, miner and methodology pages are server-rendered and work with JavaScript off. `/connect` needs JavaScript; agents use the API directly.
+Pages: `/`, `/reviews` (ratings leaderboard; also `/?view=reviews`), `/miner/:ss58`, `/methodology`, `/connect`. The board, miner and methodology pages are server-rendered and work with JavaScript off. `/connect` needs JavaScript; agents use the API directly.
 
 ### User-Agent (agents)
 
@@ -62,48 +60,27 @@ Send a descriptive `User-Agent` such as `my-agent/1.0`; `scripts/agent-cli.ts` s
 - Signatures are Ed25519 over the UTF-8 bytes of the RFC 8785 canonical JSON, encoded as base64url.
 - The DID must be a `did:key` with multicodec `0xed01`.
 
-## Buyer reviews
+## Buyer ratings
 
-Receipts record whether a paid session settled, how fast it was and what it cost. Reviews add what the buyer actually got: four 1–5 scores (quality, latency, cost, delivery), a `delivered` flag, an optional prompt category and a short note. The rules are in [/methodology#reviews](https://flopwatch.ricfmartins.workers.dev/methodology#reviews), and the full spec is FLOPWATCH-BUYER-REVIEWS-SPEC v1. FLOPScan stays the official chain-side surface; Flopwatch links to it and doesn't copy it.
+Every receipt includes the buyer's overall rating of the session, signed with the receipt and sent in the same `POST /v1/receipts`:
 
-A review counts only when:
-- the on-chain channel is `Closed` and its buyer and miner match the review;
-- the reviewer proves they own the buyer wallet, through a `/v1/bindings` binding, a `walletSignature` on the review, or a counted receipt for that channel;
-- it's the only review for that channel;
-- it arrives within 30 days of the channel opening;
-- it isn't self-dealing;
-- the buyer wallet has had at most 10 reviews counted in the last 7 days.
-
-Scores are shrunk toward 3.0 with weight 5. Only miners with n ≥ 5 are ranked.
-
-From an agent, after a **wallet-funded** `runDirectSession` (`@flop-labs/sdk` ≥ 0.11.0):
-
-```ts
-// session.json: the DirectSessionResult. Only confirmed fields are used. reply, receipts[].output
-// and sessionSeed are never copied. paidFlop is set only from a finalized SettledResult.minerPaid.
-import { writeFileSync } from "node:fs";
-const result = await runDirectSession(/* … */);
-writeFileSync("session.json", JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
-writeFileSync("input.json", JSON.stringify({
-  network: "testnet",
-  buyer: signerSs58,                 // the wallet that paid
-  model: "qwen/qwen3-8b",
-  scores: { quality: 4, latency: 3, cost: 4, delivery: 5 },   // yours to give, 1–5 or null
-  delivered: true,
-  promptCategory: "coding",          // optional
-}));
+```json
+"review": { "rating": 4.5, "notes": "Correct answer, a bit slow" }
 ```
+
+- **`rating`** is required: 1 to 5 stars in half steps (1, 1.5, … 5). A receipt without one gets a 400.
+- **`notes`** are optional plain text, up to 500 characters.
+
+A rating counts when its receipt counts: verified on chain and no self-dealing. Only a buyer wallet's first 10 counted ratings in any 7 days count; later receipts still count for reliability. The board shows a shrunk mean, `(5 × 3.0 + Σ) ÷ (5 + n)`, in a Rating column. `/reviews` ranks miners with at least 5 counted ratings. FLOPScan stays the official chain-side surface; Flopwatch links to it and doesn't copy it.
+
+From an agent:
 
 ```sh
-npx tsx scripts/agent-cli.ts review-from-session session.json input.json > review.json
-npx tsx scripts/agent-cli.ts submit-review review.json              # if you have a binding or a counted receipt
-# …or prove the buyer wallet with an sr25519 signature over the exact payload:
-npx tsx scripts/agent-cli.ts sign-review review.json > review.env.json
-npx tsx scripts/agent-cli.ts review-signing-input review.env.json   # bytes for the wallet to sign
-npx tsx scripts/agent-cli.ts submit-review review.env.json --wallet-sig <hex>
+npx tsx scripts/agent-cli.ts submit receipt.json --rating 4.5 --notes "Correct, a bit slow"
+# or put "review": { "rating": 4.5 } in receipt.json
 ```
 
-A `202` means the review is stored as pending, for example while a `forceSettle` challenge window is still open; it's re-checked automatically. A `409 duplicate_channel` means that session was already reviewed.
+`POST /v1/reviews` from the short-lived standalone version now returns `410 Gone`.
 
 ## Rules enforced
 
@@ -153,6 +130,6 @@ Confirmed against the live chains (these are the values the code uses):
 - **FLOP has 18 decimals.** Amounts convert to planck exactly (`flopToPlanck`, `planckToFlop`).
 
 Still open, so the code leaves them out rather than guessing:
-- `minerPaid` lives on the `Settled` event, and the lean RPC path doesn't decode events. A review's `paidFlop` is checked only against a counted receipt for the same channel; otherwise it's marked `paid_unverified`.
+- `minerPaid` lives on the `Settled` event, and the lean RPC path doesn't decode events, so `paidFlop` is bounded by the escrow, not matched exactly.
 - A per-miner FLOPScan reliability URL (`FLOPSCAN_MINER_RELIABILITY_URL_TESTNET` stays empty).
 - An official DID ↔ wallet binding, miner discovery, and the Testnet gateway (excluded anyway).

@@ -34,10 +34,9 @@ export interface Env {
   SHOW_SAMPLE_DATA?: string;
 }
 
-/** Queue message. Older messages carry only receiptId. */
 export interface VerifyJob {
+  /** Optional only so a malformed/legacy message can be acked safely. */
   receiptId?: string;
-  reviewId?: string;
 }
 
 export function intVar(v: string | undefined, fallback: number): number {

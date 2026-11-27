@@ -53,11 +53,8 @@ describe("rpc verifier", () => {
     expect(r3).toMatchObject({ outcome: "unavailable", note: "testnet_proof_format_pending" });
   });
 
-  it("treats a testnet RPC serving another chain as untrusted (receipts and reviews)", async () => {
+  it("pins the official testnet genesis", () => {
     expect(KNOWN_GENESIS.testnet).toBe("0x918abd58fb16306b30ef3886514cfaebffecb4de43e82b6f8ec4795c43cfd800");
-    const v = new RpcVerifier({ testnet: "https://evil.example" }, fakeRpc([ext]));
-    const s = await v.checkSession({ network: "testnet", buyer: payload({}).buyer, miner: payload({}).miner, channelId: "0x" + "ab".repeat(32) });
-    expect(s).toMatchObject({ outcome: "unavailable", note: "genesis_mismatch:testnet" });
   });
 
   it("treats RPC outages as unavailable, not failed", async () => {

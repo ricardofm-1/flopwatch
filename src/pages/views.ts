@@ -4,7 +4,8 @@ import { buildMeta, buildMinerFeed } from "../stats/feeds";
 import { WINDOWS, type StatsWindow } from "../stats/aggregate";
 import { esc, flop, html, lisbon, ms, pct, raw, short, type Raw } from "./html";
 import { layout } from "./layout";
-import { flopscanLinks, minerReviewsSection, reviewsPage } from "./reviews";
+import { flopscanLinks, minerReviewsSection, reviewsPage, stars } from "./reviews";
+import { reviewStatsRows } from "../reviews/feeds";
 
 interface Row {
   network: string;
@@ -46,7 +47,7 @@ function submitCard(opts: { id: string; title?: Raw; authNote: boolean }): Raw {
   return html`<section class="card" id="${opts.id}">
 ${opts.title ? html`<h2>${opts.title}</h2>` : ""}
 ${opts.authNote ? html`<p id="submit-auth-note" class="hint">You need to <a href="/connect">connect your DID</a> before submitting.</p>` : ""}
-<label for="envelope">Envelope JSON <code>{ "payload": {…}, "signature": "…" }</code></label>
+<label for="envelope">Envelope JSON <code>{ "payload": {…, "review": { "rating": 4.5 } }, "signature": "…" }</code></label>
 <textarea id="envelope" rows="10" spellcheck="false" disabled></textarea>
 <label for="envelope-file">…or upload a file</label><input id="envelope-file" type="file" accept="application/json,.json" disabled>
 <button type="button" id="submit" disabled>Submit receipt</button>
@@ -70,6 +71,8 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
     .bind(network, win, meta.live ? 1 : 0)
     .all<Row>();
   const models = [...new Set(all.map((r) => r.model))].sort();
+  const ratingRows = await reviewStatsRows(env, { network, window: win, hideSamples: meta.live });
+  const ratingOf = new Map(ratingRows.map((r) => [`${r.miner}|${r.model}`, r]));
   const col = SORTS[sortKey]!;
   const rows = all
     .filter((r) => (!model || r.model === model) && r.n >= minN)
@@ -97,10 +100,10 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
   <h1>Signed. Settled. Watched.</h1>
   <p class="lead">Flopwatch tracks how reliably FLOP miners serve inference. Every counted row is a wallet-funded session with a DID-signed receipt that was checked on chain.
   ${network === "devnet" ? html`<strong>Devnet data does not count toward anything.</strong>` : ""}</p>
-  <p class="view-switch"><strong>Receipts</strong> · <a href="/reviews?network=${network}">Buyer reviews</a></p>
+  <p class="view-switch"><strong>Receipts</strong> · <a href="/reviews?network=${network}">Buyer ratings</a></p>
 </section>
 <details class="submit-panel" id="submit-panel">
-  <summary>Submit a signed receipt</summary>
+  <summary>Submit a signed receipt + rating</summary>
   ${submitCard({ id: "board-submit", authNote: true })}
 </details>
 <form class="filters" method="get" action="/">
@@ -119,7 +122,7 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
 <table class="board">
   <thead><tr>
     ${link("miner", "Miner")}${link("model", "Model")}${link("n", "n")}${link("success", "Success")}${link("settlement", "Settlement")}
-    ${link("p50", "p50")}${link("p95", "p95")}${link("price", "FLOP / session")}${link("token", "FLOP / token")}${link("seen", "Last seen")}
+    ${link("p50", "p50")}${link("p95", "p95")}${link("price", "FLOP / session")}${link("token", "FLOP / token")}<th scope="col" class="num">Rating</th>${link("seen", "Last seen")}
   </tr></thead>
   <tbody>
   ${
@@ -135,10 +138,14 @@ export async function homePage(env: Env, q: URLSearchParams): Promise<string> {
     <td data-label="p95" class="num">${ms(r.latency_p95)}</td>
     <td data-label="FLOP / session" class="num">${flop(r.price_session_median)}</td>
     <td data-label="FLOP / token" class="num">${flop(r.price_token_median)}</td>
+    <td data-label="Rating" class="num stars">${(() => {
+      const rt = ratingOf.get(`${r.miner}|${r.model}`);
+      return rt ? html`<a href="/miner/${encodeURIComponent(r.miner)}?network=${r.network}#reviews" title="Shrunk mean of ${rt.n} buyer ratings">${stars(rt.rating_avg)}</a>` : "—";
+    })()}</td>
     <td data-label="Last seen">${lisbon(r.last_seen)}</td>
   </tr>`,
         )
-      : html`<tr><td colspan="10" class="empty">No counted receipts for this view yet.</td></tr>`
+      : html`<tr><td colspan="11" class="empty">No counted receipts for this view yet.</td></tr>`
   }
   </tbody>
 </table>
@@ -167,7 +174,7 @@ export async function minerPage(env: Env, miner: string, q: URLSearchParams): Pr
     byModel.set(k, [...(byModel.get(k) ?? []), s]);
   }
   const explorer = feed.stats[0]?.explorer ?? explorerLink(networkConfig(env, network).accountUrl, "address", miner);
-  const reviewsBlock = await minerReviewsSection(env, miner, network);
+  const reviewsBlock = await minerReviewsSection(env, miner, network, meta.live, feed.receipts);
   const body = html`
 <section class="intro">
   <p><a href="/">← Board</a></p>
@@ -177,7 +184,7 @@ export async function minerPage(env: Env, miner: string, q: URLSearchParams): Pr
   ${explorer ? html`<a href="${explorer}" rel="noopener" target="_blank">Explorer ↗</a>` : ""}
   · <a href="/feeds/miners/${encodeURIComponent(miner)}.json?network=${network}">JSON</a>
   · <a href="/miner/${encodeURIComponent(miner)}?network=${otherNet}">${otherNet} view</a>
-  · <a href="#reviews">Buyer reviews</a></p>
+  · <a href="#reviews">Buyer ratings</a></p>
   ${flopscanLinks(env, network, miner)}
 </section>
 ${[...byModel.entries()].map(
@@ -194,7 +201,7 @@ ${reviewsBlock}
 <section>
 <h2>Receipts</h2>
 <p class="hint">Newest 50 first; the <a href="/feeds/miners/${encodeURIComponent(miner)}.json?network=${network}">JSON feed</a> has up to 200. Prompts, outputs, buyer wallets and submitter DIDs are never shown.</p>
-<div class="table-wrap"><table class="board compact receipts"><thead><tr><th>Started</th><th>Model</th><th>Status</th><th class="num">Latency</th><th class="num">Paid FLOP</th><th>Channel / tx</th><th>Verification</th><th>Counted</th></tr></thead>
+<div class="table-wrap"><table class="board compact receipts"><thead><tr><th>Started</th><th>Model</th><th>Status</th><th class="num">Latency</th><th class="num">Paid FLOP</th><th class="num">Rating</th><th>Channel / tx</th><th>Verification</th><th>Counted</th></tr></thead>
 <tbody>${feed.receipts.map(
     (r) => html`<tr>
 <td data-label="Started">${lisbon(r.startedAt as string)}</td>
@@ -202,6 +209,7 @@ ${reviewsBlock}
 <td data-label="Status"><span class="pill ${r.ok ? "ok" : "bad"}">${r.status}</span>${r.errorClass ? html` <small>${r.errorClass}</small>` : ""}</td>
 <td data-label="Latency" class="num">${ms(r.latencyMs as number | null)}</td>
 <td data-label="Paid FLOP" class="num">${r.paidFlop ?? "n/a"}</td>
+<td data-label="Rating" class="num stars">${r.review ? stars(r.review.rating as number, 1) : "—"}</td>
 <td data-label="Channel / tx" class="mono">${r.channelId ? (/^ch/i.test(String(r.channelId)) ? String(r.channelId) : `ch ${String(r.channelId)}`) : ""}${
       r.settlementTx
         ? r.settlementTxUrl
@@ -259,26 +267,18 @@ export function methodologyPage(): string {
 <h2>Privacy</h2>
 <p>Only hashes are stored for prompts, outputs and miner URLs. Public pages and JSON feeds never show buyer wallets or submitter DIDs.</p>
 
-<h2 id="reviews">Buyer reviews</h2>
-<p>Receipts say whether a paid session settled, how fast it was and what it cost. Reviews add what the buyer actually got. <strong>FLOPScan</strong> (<a href="https://testnet.flopscan.io/markets?tab=reliability" rel="noopener" target="_blank">markets ↗</a>) is the official, chain-side surface for uptime, settlement, FRCR, readiness and reliability. Flopwatch links to it and does not copy it. Reviews are observed buyer feedback, not an official FLOP ranking, and they don't decide any Testnet scoring or airdrop.</p>
+<h2 id="reviews">Buyer ratings</h2>
+<p>Every receipt includes the buyer's overall rating of the session: <strong>1 to 5 stars in half-star steps</strong> (1, 1.5, … 5), plus an optional short note. The rating is part of the signed receipt payload, so it's submitted in the same call and covered by the same DID signature. A receipt without a rating is rejected.</p>
+<p>Receipts say whether a paid session settled, how fast it was and what it cost. The rating adds what the buyer thought of the result. <strong>FLOPScan</strong> (<a href="https://testnet.flopscan.io/markets?tab=reliability" rel="noopener" target="_blank">markets ↗</a>) is the official, chain-side surface for uptime, settlement, FRCR, readiness and reliability. Flopwatch links to it and does not copy it. Ratings are observed buyer feedback, not an official FLOP ranking, and they don't decide any Testnet scoring or airdrop.</p>
 <ul>
-<li><strong>Scores.</strong> Each review rates <em>quality</em> (correct, useful, follows instructions), <em>latency</em> (fast enough for the task), <em>cost</em> (value for the FLOP paid) and <em>delivery</em> (finished, not truncated), as 1–5 or blank. It also records whether a usable answer was <em>delivered</em>.</li>
-<li><strong>Shrinkage.</strong> Each shown average is <code>(5 × 3.0 + Σscores) ÷ (5 + n)</code>. A single 5 shows as 3.33, not 5.</li>
-<li><strong>Buyer score</strong> = 0.4·quality + 0.2·latency + 0.2·cost + 0.2·delivery, using the shrunk means. The delivered rate is a separate column, not multiplied in.</li>
-<li><strong>Ranking needs n ≥ 5.</strong> Miners with fewer counted reviews still show on their own page, marked <span class="warn">low n</span>, but aren't ranked. <em>FLOP / useful</em> needs at least 3 delivered reviews with a verified paid amount.</li>
+<li><strong>A rating counts when its receipt counts.</strong> The session was verified on chain, the receipt is not a duplicate, and there's no self-dealing. The on-chain check ties the signer's receipt to the paying wallet, so no separate proof is needed. Failed or timed-out sessions are rated too; that's part of the signal.</li>
+<li><strong>Per-buyer cap.</strong> Only a buyer wallet's first 10 counted ratings in any 7 days count. Later receipts still count for reliability, but their rating is set aside as <code>buyer_review_cap</code>.</li>
+<li><strong>Shrinkage.</strong> The rating shown is <code>(5 × 3.0 + Σratings) ÷ (5 + n)</code>, so a single 5-star rating shows as 3.33, not 5.</li>
+<li><strong>Ranking needs n ≥ 5.</strong> Miners with fewer counted ratings still show on their own page, marked <span class="warn">low n</span>, but aren't ranked on <a href="/reviews">/reviews</a>.</li>
+<li><strong>Delivered</strong> is the share of rated sessions where inference returned and settled (the receipt's <code>ok</code>). <strong>FLOP / useful</strong> is the median paid amount over delivered sessions, and needs at least 3.</li>
+<li><strong>Concentration warning.</strong> If one buyer gave more than 30% of a miner's ratings (with at least 10 ratings), the board shows a warning instead of hiding them.</li>
 </ul>
-<p>A review counts only when all of these hold:</p>
-<ul>
-<li><strong>It's a real paid session.</strong> The on-chain channel exists, its buyer and miner (and model hash, if given) match the review, it is <code>Closed</code>, and the review names the settlement transaction. A session still in its challenge window is stored as pending and counts once it closes.</li>
-<li><strong>The reviewer is the buyer.</strong> The DID that signs the review proves it controls the paying wallet in one of three ways: a wallet binding, an sr25519 wallet signature on this review, or a counted Flopwatch receipt for the same channel. A DID alone is never enough.</li>
-<li><strong>One review per session.</strong> One review per on-chain channel and per settlement transaction; each nonce is used once.</li>
-<li><strong>It's on time.</strong> It's submitted within 30 days of the channel opening.</li>
-<li><strong>No self-dealing.</strong> Buyer = miner, or wallets bound to the same DID, never count. Gateway-broker purchases are excluded too.</li>
-<li><strong>Per-buyer cap.</strong> Only a buyer wallet's first 10 counted reviews in any 7 days count. Later ones are stored as <code>buyer_review_cap</code>.</li>
-<li><strong>Rate limits.</strong> Reviews share the receipt limits (30/hour, 200/day per DID and IP), plus at most 20 reviews per DID per UTC day.</li>
-</ul>
-<p>If one buyer wrote more than 30% of a miner's reviews (with at least 10 reviews), the board shows a warning instead of hiding them. A <em>paidFlop</em> on a review is checked against a counted receipt for the same channel when one exists; otherwise it's marked <code>paid_unverified</code>. None of this is a complete defence against someone paying for many cheap sessions; it raises the cost.</p>
-<p>Notes are short plain text, up to 500 characters. Prompts, outputs, buyer wallets and DIDs are never shown.</p>
+<p>Notes are plain text, up to 500 characters. Prompts, outputs, buyer wallets and DIDs are never shown. None of this fully stops someone paying for many cheap sessions; it raises the cost.</p>
 
 <h2>Sample data</h2>
 <p>Until a real counted testnet receipt exists, the board shows clearly labelled sample rows under a <strong>SAMPLE — NOT LIVE DATA</strong> banner.</p>
@@ -290,7 +290,7 @@ export function methodologyPage(): string {
 <li><a href="/data/miners.json">/data/miners.json</a>, <a href="/data/meta.json">/data/meta.json</a>, <a href="/data/index.json">/data/index.json</a>: the daily snapshot from R2 (redacted like the feeds)</li>
 <li><code>/data/snapshots/YYYY-MM-DD/miners.json</code> and <code>receipts.ndjson</code>: dated snapshots</li>
 <li><code>/v1/receipts/&lt;id&gt;</code>: public metadata for one receipt (no buyer, no DID)</li>
-<li><a href="/feeds/reviews.json">/feeds/reviews.json</a> (<code>?network=</code>, <code>?window=7d|30d|all</code>): buyer-review aggregates; <code>/v1/reviews/&lt;id&gt;</code>: one review (no buyer, no DID)</li></ul>
+<li><a href="/feeds/reviews.json">/feeds/reviews.json</a> (<code>?network=</code>, <code>?window=7d|30d|all</code>): buyer-rating aggregates. Each receipt in the miner feeds also carries its <code>review</code>.</li></ul>
 <p><strong>Agents:</strong> send a descriptive <code>User-Agent</code> (for example <code>my-agent/1.0</code>). On <code>*.workers.dev</code>, Cloudflare's browser integrity check blocks some default library user agents, such as <code>Python-urllib</code>, with <code>403 error code: 1010</code>. That happens before Flopwatch's API runs, so the response isn't JSON.</p>
 </article>`;
   return layout({ title: "Methodology — Flopwatch", body, active: "/methodology" });

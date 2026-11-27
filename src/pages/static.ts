@@ -122,6 +122,8 @@ pre{background:var(--base);border:1px solid var(--line);border-radius:var(--r-md
 .official-links{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);margin:8px 0 0}
 h3{margin:22px 0 8px;font-family:var(--mono);font-size:14px;color:var(--fg)}
 .empty-note{color:var(--muted)}
+.board td.stars,.stars{color:#FFD60A}
+.board td.stars a{color:#FFD60A}
 .board td.notes{white-space:pre-wrap;min-width:16rem;max-width:32rem;color:#D3D7DD}
 .connected-as{margin:0;color:var(--ok);font-family:var(--mono);font-weight:700;word-break:break-all}
 .connected-as .mono{font-weight:400}

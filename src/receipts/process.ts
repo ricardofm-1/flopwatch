@@ -3,6 +3,7 @@ import { intVar } from "../env";
 import { getVerifier, type VerifyOutcome } from "../verify";
 import type { ReceiptPayload } from "./schema";
 import { hasLiveCounted, recomputeAll, recomputeGroup, setMeta, showingSamples } from "../stats/aggregate";
+import { ratingCapReason, recomputeReviewGroup } from "../reviews/aggregate";
 
 export interface ReceiptState {
   id: string;
@@ -80,12 +81,18 @@ export async function runVerification(
     .bind(passed ? "passed" : "failed", res.note ?? null, now, verifier.name, counted ? 1 : 0, id)
     .run();
 
+  if (counted && payload.review) {
+    const capped = await ratingCapReason(env, { id, network: payload.network, buyer: payload.buyer, submittedAt: payload.submittedAt });
+    if (capped) await env.DB.prepare("UPDATE receipts SET review_excluded = ? WHERE id = ?").bind(capped, id).run();
+  }
   if (counted) {
     if (!wasLive) {
       // First real counted testnet receipt: drop SAMPLE rows from all aggregates.
       await recomputeAll(env);
     } else {
-      await recomputeGroup(env, payload, await showingSamples(env));
+      const samples = await showingSamples(env);
+      await recomputeGroup(env, payload, samples);
+      await recomputeReviewGroup(env, payload, samples);
       await setMeta(env, "stats_built_at", new Date(now).toISOString());
     }
   }

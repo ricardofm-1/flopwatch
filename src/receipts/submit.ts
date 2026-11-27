@@ -99,8 +99,8 @@ export async function submitReceipt(
     await env.DB.prepare(
       `INSERT INTO receipts (id, network, did, buyer, miner, model, model_hash, channel_id, settlement_tx, block_number,
          status, ok, max_flop, paid_flop, prompt_tokens, completion_tokens, latency_ms, error_class, started_at,
-         finished_at, submitted_at, nonce, payload_json, signature, r2_key, received_at, excluded_reason)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         finished_at, submitted_at, nonce, payload_json, signature, r2_key, received_at, excluded_reason, rating, review_notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
       .bind(
         id, network, payload.did, payload.buyer, payload.miner, payload.model, payload.modelHash ?? null, channelId,
@@ -108,6 +108,7 @@ export async function submitReceipt(
         payload.paidFlop ?? null, payload.promptTokens ?? null, payload.completionTokens ?? null,
         payload.latencyMs ?? null, payload.errorClass ?? null, payload.startedAt, payload.finishedAt ?? null,
         payload.submittedAt, payload.nonce, jcs(payload), envelope.signature, r2Key, now, excludedReason,
+        payload.review.rating, payload.review.notes?.trim() || null,
       )
       .run();
   } catch (e) {
