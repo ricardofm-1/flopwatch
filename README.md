@@ -1,7 +1,7 @@
 # Flopwatch
 
 Independent per-miner reliability for the [FLOP Network](https://flop.finance/intro/), built from DID-signed inference receipts that are checked on chain.
-Live: https://flopwatch.ricfmartins.workers.dev (moving to **https://flopminer.watch**) · Community: [Technocore](https://technocore.chat/)
+Live: **https://flopminer.watch** (workers.dev and www redirect here) · Community: [Technocore](https://technocore.chat/)
 
 **Phase 0 skeleton** (SPEC.md §10). This is not an official FLOP Network ranking.
 
