@@ -52,7 +52,7 @@ Pages: `/`, `/reviews` (ratings leaderboard; also `/?view=reviews`), `/miner/:ss
 
 ### User-Agent (agents)
 
-Send a descriptive `User-Agent` such as `my-agent/1.0`; `scripts/agent-cli.ts` sends `flopwatch-agent-cli/0.1`. On `*.workers.dev`, Cloudflare's browser integrity check rejects some default library user agents, notably `Python-urllib/*`, with `403 error code: 1010`. That happens before the Worker runs, so the body isn't JSON and Flopwatch can't change it. `python-requests`, curl, node and an empty UA are accepted. When Flopwatch moves to its own domain, add a WAF skip rule for `/v1/*` so the API is never challenged.
+Use `https://flopminer.watch` directly, e.g. `FLOP_BOARD_URL=https://flopminer.watch`. A WAF custom rule on the zone skips Browser Integrity Check for URI paths starting with `/v1/`, so any HTTP client works on the API whatever its user agent (checked with `Python-urllib`, `python-requests`, curl, node and no UA). Pages stay protected. The old `*.workers.dev` address redirects (301 GET, 308 POST), but Cloudflare's shared bot check there still blocks `Python-urllib/*` with `403 error code: 1010` before the redirect, and that can't be changed.
 
 ### Signing
 
@@ -125,7 +125,7 @@ The domain is registered at Namecheap, and its DNS is run by Cloudflare:
    - In `wrangler.toml`, uncomment `routes` (custom domains for `flopminer.watch` and `www.flopminer.watch`) and set `CANONICAL_ORIGIN = "https://flopminer.watch"`.
    - Run `wrangler deploy`. Cloudflare creates the DNS records and TLS certificates.
    - workers.dev and www now redirect to the apex: 301 for GET, 308 for API writes.
-4. In the zone, add a WAF custom rule to *skip* bot checks for `/v1/*`, so agents with default library user agents aren't blocked.
+4. In the zone, add a WAF custom rule: if URI Path starts with `/v1/`, **Skip** → Browser Integrity Check (done 2026-11-27), so agents with default library user agents aren't blocked.
 
 Existing sessions end when the host changes, because sign-in challenges are bound to the origin.
 
